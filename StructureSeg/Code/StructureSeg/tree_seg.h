@@ -23,7 +23,9 @@
 #define STRUCTURESEG_TREE_SEG_H
 
 #include "common.h"
+#include "happly.h"
 
+using namespace happly;
 
 class TreeSeg
 {
@@ -31,20 +33,47 @@ public:
         TreeSeg();
         ~TreeSeg();
 
+        //----------------------------------- Variables -------------------------------------
+public:
+        // Name of the scene
+        std::string scene_name_;
+
+        // Clustering parameters
+        int db_min_pts_;
+        float db_radius_;
+
+        // Semantic code
+        int other_id_;
+        int stem_id_;
+        int crown_id_;
+
 private:
+        // Scene background cloud
+        Cloud3D::Ptr other_points_;
 
-    Cloud3D::ConstPtr cloud_input_;
-    Indices::Ptr indices_understory_;
-    Cloud3D::Ptr cloud_stems_;
+        // Scene crown cloud
+        Cloud3D::Ptr crown_points_;
+        std::vector<std::array<float, 4>> crown_props_;  // score, offset
 
-    // Subsampling
-    float leaf_size_;
-    // Verticality-based filtering
-    float search_radius_;
-    float verticality_threshold_;
-    // Euclidean clustering
-    int min_pts_per_cluster_;
-    float min_dist_between_stems_;
+        // Scene stem cloud
+        Cloud3D::Ptr stem_points_;
+        std::vector<std::array<float, 4>> stem_props_;  // score, offset
+
+        // Tree root positions
+        std::vector<Point3D> roots_;
+        std::vector<GraphVertexDescriptor> root_vertices_;
+
+        // Tree pseudo root (for shortest path searching, removed afterwards)
+        Point3D pseudo_root_;
+        GraphVertexIterator pseudo_root_vertex_;
+
+        Graph delaunay_;
+        Graph MST_;
+
+        //------------------------------------ Methods --------------------------------------
+public:
+        // Read the cloud points from the file
+        bool read_clouds(const std::string &file_nm);
 };
 
 

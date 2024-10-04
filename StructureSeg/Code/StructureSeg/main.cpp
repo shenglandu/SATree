@@ -20,58 +20,29 @@
  */
 
 #include <iomanip>
-#include <pcl/io/ply_io.h>
-#include <pcl/console/parse.h>
-#include "happly.h"
-
-using namespace pcl::console;
-using namespace happly;
+#include <iostream>
+#include <stdlib.h>
+#include "tree_seg.h"
 
 
 int main(int argc, char** argv) {
-#if defined(_OPENMP)
-    print_info("[PARALLEL PROCESSING USING ");
-    print_value("%d", omp_get_max_threads());
-    print_info(" THREADS] \n\n");
-#else
-    print_info("[NON-PARALLEL PROCESSING] \n\n");
-#endif
 
-    std::string filename_source = "/mnt/data/Tree/TreeML-Data/Dataset_strstem_ply/test/2023-01-09_tum_campus_0.ply";
-//    std::string filename_target = argv[2];
-//    std::string filename_result = argv[3];
+    std::string scene_file_nm = "/mnt/materials/PROJECT#3_Tree_Segmentation/Code/0_Preprocessing/Tree_Clouds/new/2023-01-09_tum_campus_0.ply";
+//    std::string scene_file_nm(argv[1]);
+//    std::string scene_output_nm(argv[2]);
 
-    // double tic, toc, time_val = 0.0;
     //============================= Load Data =============================
-    std::cout << "1. LOADING RAW POINT CLOUDS:" << std::endl;
-//    Cloud3D::Ptr cloud_src(new Cloud3D), cloud_tgt(new Cloud3D);
-//    // tic = omp_get_wtime();
-//    pcl::io::loadPLYFile<Point3D>(filename_source, *cloud_src);
-//    // toc = omp_get_wtime();
-//    print_info("  (1) ");
-//    print_value("%d", cloud_src->size());
-//    std::cout << "header: " << cloud_src->header << std::endl;
-//    print_info(" source points in ");
-//    // print_value("%f", toc - tic);
-//    print_info(" s.\n");
-
-    // use happly to load data
-    PLYData plyIn(filename_source);
-    std::vector<float> scores = plyIn.getElement("vertex").getProperty<float>("s");
-    std::cout << "score size" << scores.size() << std::endl;
-    for (int i = 0; i < scores.size(); i++){
-        if (scores[i] > 0)
-            std::cout << scores[i] << std::endl;
+    std::cout << "1. LOADING SCENE POINT CLOUDS FROM STRUCTURENET:" << std::endl;
+    // Make sure the file is ply format
+    size_t find = scene_file_nm.find(".ply");
+    if (find == -1){
+        std::cout << ".ply format required!" << std::endl;
+        exit(EXIT_FAILURE);
     }
 
-    // tic = omp_get_wtime();
-//    pcl::io::loadPLYFile<Point3D>(filename_target, *cloud_tgt);
-//    // toc = omp_get_wtime();
-//    print_info("  (2) ");
-//    print_value("%d", cloud_tgt->size());
-//    print_info(" target points in ");
-//    // print_value("%f", toc - tic);
-//    print_info(" s.\n");
+    TreeSeg *treeSeg = new TreeSeg();
+    treeSeg->read_clouds(scene_file_nm);
+
 //
 //    //======================= Pairwise Registration =======================
 //    std::cout << "2. MAPPING STEMS:" << std::endl;
@@ -121,6 +92,6 @@ int main(int argc, char** argv) {
 //    //============================ Output Matrix ==========================
 //    writeTransformationMatrix(filename_result, mat_crs);
 
-    return 0;
+    return EXIT_SUCCESS;
 }
 
