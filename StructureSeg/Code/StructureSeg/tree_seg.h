@@ -67,6 +67,7 @@ private:
         Point3D pseudo_root_;
         GraphVertexIterator pseudo_root_vertex_;
 
+        // Tree graphs
         Graph delaunay_;
         Graph MST_;
 
@@ -74,6 +75,10 @@ private:
 public:
         // Read the cloud points from the file
         bool read_clouds(const std::string &file_nm);
+
+        // Extract the tree stems
+        bool extract_stems();
+
 };
 
 

@@ -31,7 +31,7 @@ int main(int argc, char** argv) {
 //    std::string scene_file_nm(argv[1]);
 //    std::string scene_output_nm(argv[2]);
 
-    //============================= Load Data =============================
+    std::cout << "================================================" << std::endl;
     std::cout << "1. LOADING SCENE POINT CLOUDS FROM STRUCTURENET:" << std::endl;
     // Make sure the file is ply format
     size_t find = scene_file_nm.find(".ply");
@@ -41,7 +41,13 @@ int main(int argc, char** argv) {
     }
 
     TreeSeg *treeSeg = new TreeSeg();
-    treeSeg->read_clouds(scene_file_nm);
+    if (!treeSeg->read_clouds(scene_file_nm)){
+        std::cout << "fail to read the clouds" << std::endl;
+        exit(EXIT_FAILURE);
+    }
+
+    std::cout << "================================================" << std::endl;
+    std::cout << "2. EXTRACT TREE STEMS:" << std::endl;
 
 //
 //    //======================= Pairwise Registration =======================

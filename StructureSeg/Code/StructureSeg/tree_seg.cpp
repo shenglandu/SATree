@@ -106,4 +106,20 @@ bool TreeSeg::read_clouds(const std::string &file_nm) {
     std::cout << "Tree stem point: " << stem_points_->size() << std::endl;
     std::cout << "Tree crown point: " << crown_points_->size() << std::endl;
 
+    return true;
+}
+
+
+bool TreeSeg::extract_stems() {
+    // Initialize tree root containers
+    roots_.clear();
+
+    // Perform clustering over stem points
+    std::vector<pcl::PointIndices> cluster_stem_idx_;
+    OctreeEuclideanClusterExtraction<Point3D> oec;
+    oec.setClusterTolerance(db_radius_);
+    oec.setMinClusterSize(db_min_pts_);
+    oec.setInputCloud(stem_points_);
+    oec.extract(cluster_stem_idx_);
+
 }
