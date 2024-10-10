@@ -46,18 +46,20 @@ public:
         int other_id_;
         int stem_id_;
         int crown_id_;
+        int ignore_id_;
+
+        // Stem selection parameters
+        float eps_s_;
+        float cut_height_;
+        float radius_;
 
 private:
-        // Scene background cloud
+        // Scene background points
         Cloud3D::Ptr other_points_;
 
-        // Scene crown cloud
-        Cloud3D::Ptr crown_points_;
-        std::vector<std::array<float, 4>> crown_props_;  // score, offset
-
-        // Scene stem cloud
-        Cloud3D::Ptr stem_points_;
-        std::vector<std::array<float, 4>> stem_props_;  // score, offset
+        // Scene tree points and properties
+        Cloud3D::Ptr tree_points_;
+        std::vector<std::array<float, 5>> tree_props_;  // semantic prediction, score, offset
 
         // Tree root positions
         std::vector<Point3D> roots_;
