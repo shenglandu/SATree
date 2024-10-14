@@ -20,28 +20,24 @@
  */
 
 #include "tree_seg.h"
-#include <pcl/common/angles.h>
-#include <pcl/sample_consensus/method_types.h>
-#include <pcl/sample_consensus/model_types.h>
-#include <pcl/segmentation/sac_segmentation.h>
 #include "voxel_grid_fix.h"
 #include "octree_extract_clusters.h"
-#include "CSF.h"
 #include "octree_unibn.hpp"
-#include <vtkOBBTree.h>
 #include <iostream>
 #include <fstream>
+#include "tetgen.h"
 
 
 TreeSeg::TreeSeg()
         : other_points_(new Cloud3D)
         , tree_points_(new Cloud3D)
+        , noise_idx_(new Indices)
         , db_min_pts_(50)
         , db_radius_(0.2)
         , other_id_(0)
         , stem_id_(1)
         , crown_id_(2)
-        , ignore_id_(-1)
+        , ignore_id_(3)
         , eps_s_(0.5)
         , cut_height_(2.0)
         , radius_(0.15)
@@ -78,7 +74,7 @@ bool TreeSeg::read_clouds(const std::string &file_nm) {
     // std::vector<int> ins = plyIn.getElement("vertex").getProperty<int>("ins");
 
     // Read cloud point by point
-    for (int i = 0; i < x.size(); i++){
+    for (int i = 0; i < x.size(); i++) {
         // Read point coordinates, attributes (score and offsets), and semantic prediction
         Point3D pi(x[i], y[i], z[i]);
         int sem_id = pred[i];
@@ -104,13 +100,20 @@ bool TreeSeg::read_clouds(const std::string &file_nm) {
 
 
 bool TreeSeg::extract_stems() {
+    // Check if there is input tree clouds
+    if (!tree_points_){
+        std::cout << "No tree points available!" << std::endl;
+        return false;
+    }
+
     // Initialize tree root containers
     roots_.clear();
+    noise_idx_->indices.clear();
 
     // Retrieve 2d stem points from the tree point cloud with the indices
     Cloud3D::Ptr proj_stem_pts(new Cloud3D);
     std::vector<int> stem_idx, noise_idx;
-    for (int i = 0; i < tree_points_->size(); i++){
+    for (int i = 0; i < tree_points_->size(); i++) {
         int sem_id = int(tree_props_[i][0]);
         if (sem_id == stem_id_){
             Point3D pi = (*tree_points_)[i];
@@ -118,6 +121,12 @@ bool TreeSeg::extract_stems() {
             proj_stem_pts->push_back(pi);
             stem_idx.push_back(i);
         }
+    }
+
+    // Make sure there are stem points before clustering
+    if(!proj_stem_pts){
+        std::cout << "No stem points found!" << std::endl;
+        return false;
     }
 
     // Perform clustering over stem points
@@ -128,14 +137,19 @@ bool TreeSeg::extract_stems() {
     oec.setInputCloud(proj_stem_pts);
     oec.extract(proj_stem_clusters);
 
+    // Construct 3D tree point cloud octree
+    unibn::Octree<Point3D> octree_3d;
+    octree_3d.initialize(*tree_points_);
+    std::vector<uint32_t> neighbors_3d;
+
     // Construct projected tree point cloud and its octree
     Cloud3D::Ptr proj_tree_pts(new Cloud3D);
     copyPointCloud(*tree_points_, *proj_tree_pts);
     for (int i = 0; i < proj_tree_pts->size(); i++)
         (*proj_tree_pts)[i].z = 0;
-    unibn::Octree<Point3D> octree;
-    octree.initialize(*proj_tree_pts);
-    std::vector<std::vector<uint32_t>> neighbors(2);
+    unibn::Octree<Point3D> octree_2d;
+    octree_2d.initialize(*proj_tree_pts);
+    std::vector<std::vector<uint32_t>> neighbors_2d(2);
 
     // Check the stem candidate cluster quality based on score, height, and local maxima condition
     std::vector<int> stem_ind_container;
@@ -146,11 +160,11 @@ bool TreeSeg::extract_stems() {
         float highest = -1000;
         float avg_s, max_s1 = 0.;
         Point3D centroid(0, 0, 0);
-        neighbors.clear();
+        neighbors_2d.clear();
+        neighbors_3d.clear();
         stem_ind_container.clear();
 
         // retrieve over per point in the stem cluster
-        int count = 0;
         for (int& j: proj_stem_clusters[i].indices){
             int stem_ind = stem_idx[j];
             centroid.x += (*proj_stem_pts)[j].x;
@@ -168,24 +182,35 @@ bool TreeSeg::extract_stems() {
             if (tree_props_[stem_ind][1] > max_s1)
                 max_s1 = tree_props_[stem_ind][1];
             stem_ind_container.push_back(stem_ind);
-            count++;
         }
-        avg_s = avg_s / float(count);
-        centroid.x = centroid.x / float(count);
-        centroid.y = centroid.y / float(count);
+        avg_s /= stem_ind_container.size();
+        centroid.x /= stem_ind_container.size();
+        centroid.y /= stem_ind_container.size();
+
+        // check if the root is surrounded by lower tree points
+        bool is_floating = false;
+        octree_3d.radiusNeighbors<unibn::L2Distance<Point3D>>((*tree_points_)[lowest_idx], 2 * radius_, neighbors_3d);
+        // if there is any tree point lower than the root
+        for (auto& ni: neighbors_3d){
+            if ((*tree_points_)[ni].z < lowest){
+                is_floating = true;
+                break;
+            }
+        }
+        if (is_floating) continue;
 
         // check if the score is sufficiently high
         if (avg_s <= eps_s_){
             // retrieve the 2-ring spherical neighborhoods from centroid to 2d tree points
-            octree.radiusNeighbors<unibn::L2Distance<Point3D>>(centroid, radius_, neighbors[0]);
-            octree.radiusNeighbors<unibn::L2Distance<Point3D>>(centroid, 3 * radius_, neighbors[1]);
-            if (neighbors[0].empty() or neighbors[1].empty()){
+            octree_2d.radiusNeighbors<unibn::L2Distance<Point3D>>(centroid, radius_, neighbors_2d[0]);
+            octree_2d.radiusNeighbors<unibn::L2Distance<Point3D>>(centroid, 3 * radius_, neighbors_2d[1]);
+            if (neighbors_2d[0].empty() or neighbors_2d[1].empty()){
                 noise_idx.insert(noise_idx.end(), stem_ind_container.begin(), stem_ind_container.end());
                 continue;
             }
             // collect scores of the 1st neighbourhood and obtain the max score value
             std::vector<float> neigh_s1, neigh_s2;
-            for (auto& ni: neighbors[0]){
+            for (auto& ni: neighbors_2d[0]){
                 if ((*tree_points_)[ni].z - highest <= 0.5)
                     neigh_s1.push_back(tree_props_[ni][1]);
             }
@@ -193,7 +218,7 @@ bool TreeSeg::extract_stems() {
             max_s1 = std::max(neigh_max_s1, max_s1);
             // check if the 2nd neighbour contains crown points, collect scores in the 2nd neighbour
             int num_crown = 0;
-            for (auto& ni: neighbors[1]){
+            for (auto& ni: neighbors_2d[1]){
                 if ((*tree_points_)[ni].z - highest <= 0.5){
                     neigh_s2.push_back(tree_props_[ni][1]);
                     int sem_id = int(tree_props_[ni][0]);
@@ -219,32 +244,321 @@ bool TreeSeg::extract_stems() {
 
         // obtain the root location by stem points below the cutting height
         Point3D root(0, 0, lowest);
-        count = 0;
+        int n_pts = 0;
         for (int& j: proj_stem_clusters[i].indices){
             int stem_ind = stem_idx[j];
             float zj = (*tree_points_)[stem_ind].z;
             if (zj - lowest <= cut_height_){
                 root.x += (*proj_stem_pts)[j].x;
                 root.y += (*proj_stem_pts)[j].y;
-                count ++;
+                n_pts ++;
             }
         }
-        root.x = root.x / float(count);
-        root.y = root.y / float(count);
-
-        // check if the root is too high above ground
+        root.x /= float(n_pts);
+        root.y /= float(n_pts);
         roots_.push_back(root);
     }
 
-    ofstream mfile;
-    mfile.open("/mnt/materials/PROJECT#3_Tree_Segmentation/Code/0_Preprocessing/Tree_Clouds/root/treeml/campus_root.xyz");
+    std::ofstream mfile;
+    mfile.open("/mnt/materials/PROJECT#3_Tree_Segmentation/Code/0_Preprocessing/Tree_Clouds/campus0_root.xyz");
     for (int i = 0; i < roots_.size(); i++)
-        mfile << roots_[i].x << " " << roots_[i].y << " " << roots_[i].z << endl;
+        mfile << roots_[i].x << " " << roots_[i].y << " " << roots_[i].z << std::endl;
     mfile.close();
 
-    std::cout << roots_.size() << " number of roots have been extracted" << std::endl;
+    // Clear temporary data and return
+    std::sort(noise_idx.begin(), noise_idx.end());
+    noise_idx_->indices = noise_idx;
     proj_stem_pts->clear();
     proj_tree_pts->clear();
+    octree_2d.clear();
+    octree_3d.clear();
+    std::cout << roots_.size() << " number of roots have been extracted" << std::endl;
+    std::cout << noise_idx.size() << " points are detected as noises" << std::endl;
 
     return true;
+}
+
+
+bool TreeSeg::group_trees() {
+    // Check if there are detected roots
+    if (roots_.empty()){
+        std::cout << "No tree roots detected!" << std::endl;
+        return false;
+    }
+
+    // Group individual tree points by graph shortest path
+    std::cout << "Building delaunay..." << std::endl;
+    build_delaunay();
+
+    std::cout << "Extracting MST..." << std::endl;
+    extract_mst();
+
+    std::cout << "Assign tree id..." << std::endl;
+    assign_tree_id();
+
+    return true;
+}
+
+
+void TreeSeg::output_tree_seg(const std::string &file_nm) {
+    std::ofstream myfile;
+    myfile.open(file_nm);
+    std::pair<GraphVertexIterator, GraphVertexIterator> vp = vertices(MST_);
+    for (GraphVertexIterator vIter = vp.first; vIter != vp.second; ++vIter) {
+        GraphVertexDescriptor vi = *vIter;
+        if (degree(vi, MST_) != 0 ) { // ignore isolated vertices
+            Point3D pi = MST_[vi].coord;
+            int tree_id = MST_[vi].tree_id;
+            myfile << pi.x  << " " << pi.y << " " << pi.z << " " << tree_id << "\n";
+        }
+    }
+    myfile.close();
+}
+
+
+void TreeSeg::build_delaunay() {
+    // Initialize
+    delaunay_.clear();
+
+    // Read points into the graph
+    int n_pts = 0;
+    for (int i = 0; i < tree_points_->size(); i++) {
+        // if the index is noise, skip the current point
+        if (binary_search(noise_idx_->indices.begin(), noise_idx_->indices.end(), i)) continue;
+        // read the point information into the vertex
+        GraphVertexProp vi;
+        vi.coord = (*tree_points_)[i];
+        vi.dir = Point3D(tree_props_[i][2], tree_props_[i][3], tree_props_[i][4]);
+        vi.nParent = 0;
+        vi.score = tree_props_[i][1];
+        vi.tree_id = -100;
+        add_vertex(vi, delaunay_);
+        n_pts ++;
+    }
+
+    // Read roots into the graph and generate the lowest pseudo root
+    pseudo_root_ = Point3D(0, 0, 1000);
+    for (auto& ri: roots_) {
+        // read roots into the graph
+        GraphVertexProp vi;
+        vi.coord = ri;
+        vi.dir = Point3D(0, 0, 0);
+        vi.nParent = 0;
+        vi.score = 1.;
+        vi.tree_id = -100;
+        add_vertex(vi, delaunay_);
+        // accumulate to pseudo root
+        pseudo_root_.x += ri.x;
+        pseudo_root_.y += ri.y;
+        if (pseudo_root_.z > ri.z)
+            pseudo_root_.z = ri.z;
+        // increase point count
+        n_pts ++;
+    }
+    pseudo_root_.x /= roots_.size();
+    pseudo_root_.y /= roots_.size();
+    pseudo_root_.z -= 20;
+
+    // Add pseudo root to the graph
+    GraphVertexProp vr;
+    vr.coord = pseudo_root_;
+    vr.dir = Point3D(0, 0, 0);
+    vr.nParent = 0;
+    vr.score = 1.;
+    vr.tree_id = -100;
+    add_vertex(vr, delaunay_);
+    n_pts += 1;
+
+    // Construct delaunay edges
+    tetgenio tet_in, tet_out;
+    tet_in.numberofpoints = n_pts;
+    tet_in.pointlist = new REAL[tet_in.numberofpoints * 3];
+    int count = 0;
+    std::pair<GraphVertexIterator, GraphVertexIterator> vp = vertices(delaunay_);
+    for (GraphVertexIterator vIter = vp.first; vIter != vp.second; ++vIter) {
+        Point3D pi = (delaunay_)[*vIter].coord;
+        tet_in.pointlist[count * 3 + 0] = pi.x;
+        tet_in.pointlist[count * 3 + 1] = pi.y;
+        tet_in.pointlist[count * 3 + 2] = pi.z;
+        ++count;
+    }
+    const std::string str("Q");
+    tetrahedralize(const_cast<char*>(str.c_str()), &tet_in, &tet_out);
+    for (long nTet = 0; nTet < tet_out.numberoftetrahedra; nTet++) {
+        long tet_first = nTet * tet_out.numberofcorners;
+        for (long i = tet_first; i < tet_first + tet_out.numberofcorners; i++)
+            for (long j = i + 1; j < tet_first + tet_out.numberofcorners; j++)
+                add_edge(vertex(tet_out.tetrahedronlist[i], delaunay_), vertex(tet_out.tetrahedronlist[j], delaunay_), delaunay_);
+    }
+
+    std::cout << "v " << num_vertices(delaunay_) << std::endl;
+    std::cout << "e " << num_edges(delaunay_) << std::endl;
+
+    // Obtain root vertex in the graph
+    obtain_root_vertex();
+
+    // Compute graph weights
+    compute_graph_weights();
+
+}
+
+
+void TreeSeg::extract_mst() {
+    // Initialize
+    MST_.clear();
+
+    // Add vertices to MST
+    std::pair<GraphVertexIterator, GraphVertexIterator> vp = vertices(delaunay_);
+    for (GraphVertexIterator vIter = vp.first; vIter != vp.second; ++vIter) {
+        GraphVertexProp vi;
+        vi.coord = (delaunay_)[*vIter].coord;
+        vi.nParent = (delaunay_)[*vIter].nParent;
+        vi.tree_id = (delaunay_)[*vIter].tree_id;
+        add_vertex(vi, MST_);
+    }
+
+    // Obtain MST edges by shortest path
+    std::vector<double> dists(num_vertices(delaunay_));
+    std::vector<GraphVertexDescriptor> vecParent(num_vertices(delaunay_));
+    dijkstra_shortest_paths(delaunay_, pseudo_root_vertex_, weight_map(get(&GraphEdgeProp::nWeight, delaunay_))
+            .distance_map(&dists[0])
+            .predecessor_map(&(vecParent[0])));
+    for (unsigned int i = 0; i < vecParent.size(); ++i) {
+        if (vertex(i, MST_) != vecParent.at(i)) {
+            GraphEdgeProp ei;
+            ei.nWeight = 0.0;
+            add_edge(vertex(i, MST_), vertex(vecParent.at(i), MST_), ei, MST_);
+        }
+        MST_[vertex(i, MST_)].nParent = vecParent.at(i);
+    }
+
+    std::cout << "e " << num_edges(MST_) << std::endl;
+
+}
+
+
+void TreeSeg::assign_tree_id() {
+    // Remote pseudo root
+    clear_vertex(pseudo_root_vertex_, MST_);
+
+    // Retrieve vertices in MST and assign tree id
+    for (int i = 0; i < root_vertices_.size(); i++) {
+        GraphVertexDescriptor ri = root_vertices_[i];
+        std::vector<GraphVertexDescriptor> stack;
+        stack.push_back(ri);
+        while (true) {
+            GraphVertexDescriptor vi = stack.back();
+            (MST_)[vi].tree_id = i;
+            stack.pop_back();
+            std::pair<GraphAdjacencyIterator, GraphAdjacencyIterator> aj = adjacent_vertices(vi, MST_);
+            for (GraphAdjacencyIterator aIter = aj.first; aIter != aj.second; ++aIter) {
+                if (*aIter != (MST_)[vi].nParent) {
+                    Point3D ps = (MST_)[vi].coord;
+                    Point3D pt = (MST_)[*aIter].coord;
+//                    float dist = pcl::euclideanDistance(ps, pt);
+//                    if (dist <= 3.0)  stack.push_back(*aIter);
+                    stack.push_back(*aIter);
+                }
+            }
+            if (stack.empty())
+                break;
+        }
+    }
+}
+
+
+void TreeSeg::compute_graph_weights() {
+    // Initialize
+    std::pair<GraphEdgeIterator, GraphEdgeIterator> ep = edges(delaunay_);
+    GraphVertexDescriptor vs, vt;
+    Point3D ps, pt, ds, dt;
+    float s1, s2;
+
+    // Retrieve over edges
+    for (GraphEdgeIterator eIter = ep.first; eIter != ep.second; ++eIter) {
+        // obtain coord, direction and sore info of source and target vertex
+        vs = source(*eIter, delaunay_);
+        vt = target(*eIter, delaunay_);
+        ps = (delaunay_)[vs].coord;
+        pt = (delaunay_)[vt].coord;
+        ds = (delaunay_)[vs].dir;
+        dt = (delaunay_)[vt].dir;
+        s1 = 1.0 - (delaunay_)[vs].score;
+        s2 = 1.0 - (delaunay_)[vt].score;
+        if (s1 < 0) s1 = 0.;
+        if (s2 < 0) s2 = 0.;
+        // normalize the directions
+        ds = normalize_point_3d(ds);
+        dt = normalize_point_3d(dt);
+        // shift the original coordinates based on scaled offsets
+//        ps.getArray3fMap() = ps.getArray3fMap() + 0.01 * s1 * ds.getArray3fMap();
+//        pt.getArray3fMap() = pt.getArray3fMap() + 0.01 * s2 * dt.getArray3fMap();
+        double dist_s_2_t = compute_pair_distance(ps, pt);
+        (delaunay_)[*eIter].nWeight = dist_s_2_t;
+    }
+
+    // Assign pseudo edges between pseudo root and roots with weight 0
+    for (int i = 0; i < root_vertices_.size(); i++){
+        GraphVertexDescriptor ri = root_vertices_[i];
+        if (!edge(pseudo_root_vertex_, ri, delaunay_).second)  {
+            GraphEdgeProp ei;
+            ei.nWeight = 0.0;
+            add_edge(pseudo_root_vertex_, ri, ei, delaunay_);
+        }
+        else
+            (delaunay_)[edge(pseudo_root_vertex_, ri, delaunay_).first].nWeight = 0.0;
+    }
+
+}
+
+
+void TreeSeg::obtain_root_vertex() {
+    // Obtain the root vertices and pseudo root vertex
+    std::pair<GraphVertexIterator, GraphVertexIterator> vp = vertices(delaunay_);
+    for (GraphVertexIterator vIter = vp.first; vIter != vp.second; ++vIter)
+    {
+        Point3D pi = (delaunay_)[*vIter].coord;
+        double dist_2_pseudo = compute_pair_distance(pi, pseudo_root_);
+        if (dist_2_pseudo <= 0.0001) {
+            pseudo_root_vertex_ = *vIter;
+            continue;
+        }
+        for (auto& ri: roots_) {
+            double dist_2_ri = compute_pair_distance(pi, ri);
+            if (dist_2_ri <= 0.0001)
+            {
+                GraphVertexDescriptor vr = *vIter;
+                root_vertices_.push_back(vr);
+            }
+        }
+    }
+
+}
+
+
+Point3D TreeSeg::normalize_point_3d(Point3D p) {
+    // Initialize the origin
+    Point3D po(0, 0, 0);
+
+    // Compute the distance
+    double dist = compute_pair_distance(p, po);
+
+    // Normalize the dimensions accordingly
+    p.x /= dist;
+    p.y /= dist;
+    p.z /= dist;
+
+    return p;
+}
+
+
+double TreeSeg::compute_pair_distance(Point3D p1, Point3D p2) {
+    // Compute dx, dy, dz
+    double dx = p1.x - p2.x;
+    double dy = p1.y - p2.y;
+    double dz = p1.z - p2.z;
+
+    // Obtain distance
+    double dist = sqrt(dx * dx + dy * dy + dz * dz);
+    return dist;
 }

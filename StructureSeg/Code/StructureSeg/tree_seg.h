@@ -25,6 +25,7 @@
 #include "common.h"
 #include "happly.h"
 
+
 using namespace happly;
 
 class TreeSeg
@@ -60,6 +61,7 @@ private:
         // Scene tree points and properties
         Cloud3D::Ptr tree_points_;
         std::vector<std::array<float, 5>> tree_props_;  // semantic prediction, score, offset
+        Indices::Ptr noise_idx_;
 
         // Tree root positions
         std::vector<Point3D> roots_;
@@ -67,7 +69,7 @@ private:
 
         // Tree pseudo root (for shortest path searching, removed afterwards)
         Point3D pseudo_root_;
-        GraphVertexIterator pseudo_root_vertex_;
+        GraphVertexDescriptor pseudo_root_vertex_;
 
         // Tree graphs
         Graph delaunay_;
@@ -80,6 +82,34 @@ public:
 
         // Extract the tree stems
         bool extract_stems();
+
+        // Group tree points
+        bool group_trees();
+
+        // Output tree segmentation
+        void output_tree_seg(const std::string &file_nm);
+
+private:
+        // Build Delaunay graph
+        void build_delaunay();
+
+        // Extract MST graph
+        void extract_mst();
+
+        // Assign tree id to graph vertices
+        void assign_tree_id();
+
+        // Compute graph weights
+        void compute_graph_weights();
+
+        // Obtain root vertex
+        void obtain_root_vertex();
+
+        // Normalize a vector
+        Point3D normalize_point_3d(Point3D p);
+
+        // Calculate the distance between points
+        double compute_pair_distance(Point3D p1, Point3D p2);
 
 };
 

@@ -32,6 +32,9 @@ find_package(Boost REQUIRED)
 # Add subdirectory for the CSF library
 add_subdirectory(3rd_party/csf)
 
+# Add subdirectory for the tetgen library
+add_subdirectory(3rd_party/tetgen)
+
 # Set project sources
 set(PROJECT_SOURCES
         3rd_party/voxel_grid/voxel_grid_fix.cpp
@@ -50,6 +53,7 @@ target_include_directories(StructureSeg PUBLIC
         ${Boost_headers_DIR} # Boost header directories
         3rd_party/ply
         3rd_party/csf
+        3rd_party/tetgen
         3rd_party/octree
         3rd_party/voxel_grid
         )
@@ -57,6 +61,7 @@ target_include_directories(StructureSeg PUBLIC
 # Link libraries to target
 target_link_libraries(StructureSeg PUBLIC
         CSF # CSF library
+        TETGEN
         ${PCL_LIBRARIES} # PCL libraries
         ${VTK_LIBRARIES} # VTK libraries
         ${Boost_LIBRARIES} # Boost libraries

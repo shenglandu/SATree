@@ -26,11 +26,10 @@
 #include <boost/graph/adjacency_list.hpp>
 #include <boost/graph/dijkstra_shortest_paths.hpp>
 
+
 // Define point cloud
-typedef pcl::PointXY Point2D;
 typedef pcl::PointXYZ Point3D;
 typedef pcl::PointIndices Indices;
-typedef pcl::PointCloud <Point2D> Cloud2D;
 typedef pcl::PointCloud <Point3D> Cloud3D;
 
 // Define the tree vertex and edge properties

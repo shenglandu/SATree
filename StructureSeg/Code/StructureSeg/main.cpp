@@ -27,7 +27,7 @@
 
 int main(int argc, char** argv) {
 
-    std::string scene_file_nm = "/mnt/materials/PROJECT#3_Tree_Segmentation/Code/0_Preprocessing/Tree_Clouds/treeml/2023-01-09_tum_campus_0.ply";
+    std::string scene_file_nm = "/mnt/materials/PROJECT#3_Tree_Segmentation/Code/0_Preprocessing/Tree_Clouds/2023-01-09_tum_campus_0.ply";
 //    std::string scene_file_nm(argv[1]);
 //    std::string scene_output_nm(argv[2]);
 
@@ -53,7 +53,13 @@ int main(int argc, char** argv) {
         exit(EXIT_FAILURE);
     }
 
-
+    std::cout << "================================================" << std::endl;
+    std::cout << "3. GROUP TREE INSTANCES:" << std::endl;
+    if (!treeSeg->group_trees()){
+        std::cout << "fail to group tree points" << std::endl;
+        exit(EXIT_FAILURE);
+    }
+    treeSeg->output_tree_seg("/mnt/materials/PROJECT#3_Tree_Segmentation/Code/0_Preprocessing/Tree_Clouds/graphvertices.xyz");
 
     return EXIT_SUCCESS;
 }
