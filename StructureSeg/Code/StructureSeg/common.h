@@ -36,7 +36,7 @@ typedef pcl::PointCloud <Point3D> Cloud3D;
 struct GraphVertexProp{
     Point3D  coord, dir;
     std::size_t nParent;
-    int tree_id;
+    int idx, tree_id;
     float score;
 };
 

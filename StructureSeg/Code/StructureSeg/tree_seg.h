@@ -51,8 +51,10 @@ public:
 
         // Stem selection parameters
         float eps_s_;
+        float eps_dist_;
         float cut_height_;
         float radius_;
+        float grid_size_;
 
 private:
         // Scene background points
@@ -61,7 +63,11 @@ private:
         // Scene tree points and properties
         Cloud3D::Ptr tree_points_;
         std::vector<std::array<float, 5>> tree_props_;  // semantic prediction, score, offset
-        Indices::Ptr noise_idx_;
+
+        // Scene point indices
+        std::vector<int> noise_idx_;
+        std::vector<int> tree_voxel_map_idx_;
+        std::vector<std::vector<int>> voxel_idx_;
 
         // Tree root positions
         std::vector<Point3D> roots_;
@@ -89,7 +95,13 @@ public:
         // Output tree segmentation
         void output_tree_seg(const std::string &file_nm);
 
+        // Output tree root positions
+        void output_root_xyz(const std::string &file_nm);
+
 private:
+        // Voxelize tree points
+        void voxelize_tree_points();
+
         // Build Delaunay graph
         void build_delaunay();
 
