@@ -36,8 +36,9 @@ public:
 
         //----------------------------------- Variables -------------------------------------
 public:
-        // Name of the scene
+        // Name and path of the scene
         std::string scene_name_;
+        std::string scene_path_;
 
         // Clustering parameters
         int db_min_pts_;
@@ -55,6 +56,9 @@ public:
         float cut_height_;
         float radius_;
         float grid_size_;
+
+        // Bool indicator of outputting root positions
+        bool is_output_root;
 
 private:
         // Scene background points
@@ -83,8 +87,11 @@ private:
 
         //------------------------------------ Methods --------------------------------------
 public:
+        // Parse file name to get scene name and scene path
+        bool parse_scene_name(const std::string &file_nm);
+
         // Read the cloud points from the file
-        bool read_clouds(const std::string &file_nm);
+        bool read_clouds();
 
         // Extract the tree stems
         bool extract_stems();
@@ -93,10 +100,10 @@ public:
         bool group_trees();
 
         // Output tree segmentation
-        void output_tree_seg(const std::string &file_nm);
+        void output_tree_seg();
 
         // Output tree root positions
-        void output_root_xyz(const std::string &file_nm);
+        void output_root_xyz();
 
 private:
         // Voxelize tree points

@@ -19,9 +19,7 @@
  *
  */
 
-#include <iomanip>
 #include <iostream>
-#include <stdlib.h>
 #include "tree_seg.h"
 
 
@@ -29,19 +27,15 @@ int main(int argc, char** argv) {
 
     std::string scene_file_nm = "/mnt/materials/PROJECT#3_Tree_Segmentation/Code/0_Preprocessing/Tree_Clouds/2023-01-16_44_1.ply";
 //    std::string scene_file_nm(argv[1]);
-//    std::string scene_output_nm(argv[2]);
+
+    // Initialize a tree seg object
+    TreeSeg *treeSeg = new TreeSeg();
+    if (!treeSeg->parse_scene_name(scene_file_nm))
+        exit(EXIT_FAILURE);
 
     std::cout << "================================================" << std::endl;
     std::cout << "1. LOADING SCENE POINT CLOUDS FROM STRUCTURENET:" << std::endl;
-    // Make sure the file is ply format
-    size_t find = scene_file_nm.find(".ply");
-    if (find == -1){
-        std::cout << ".ply format required!" << std::endl;
-        exit(EXIT_FAILURE);
-    }
-
-    TreeSeg *treeSeg = new TreeSeg();
-    if (!treeSeg->read_clouds(scene_file_nm)){
+    if (!treeSeg->read_clouds()){
         std::cout << "fail to read the clouds" << std::endl;
         exit(EXIT_FAILURE);
     }
@@ -59,7 +53,7 @@ int main(int argc, char** argv) {
         std::cout << "fail to group tree points" << std::endl;
         exit(EXIT_FAILURE);
     }
-    treeSeg->output_tree_seg("/mnt/materials/PROJECT#3_Tree_Segmentation/Code/0_Preprocessing/Tree_Clouds/seg.ply");
+    treeSeg->output_tree_seg();
 
     return EXIT_SUCCESS;
 }

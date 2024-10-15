@@ -42,6 +42,7 @@ TreeSeg::TreeSeg()
         , cut_height_(2.0)
         , radius_(0.15)
         , grid_size_(0.2)
+        , is_output_root(true)
 {
 }
 
@@ -59,7 +60,45 @@ TreeSeg::~TreeSeg() {
 }
 
 
-bool TreeSeg::read_clouds(const std::string &file_nm) {
+bool TreeSeg::parse_scene_name(const std::string &file_nm) {
+    // Initialize
+    scene_name_ = "";
+    scene_path_ = "";
+
+    // Parse the input scene file name
+    std::stringstream fs(file_nm);
+    std::string file_sub_nm;
+    std::vector<std::string> file_sub_nms;
+    char delimiter = '/';
+    while (getline(fs, file_sub_nm, delimiter)) {
+        file_sub_nms.push_back(file_sub_nm);
+    }
+
+    // Obtain the path and name by retrieving the tokens
+    for (int i = 0; i < file_sub_nms.size(); i++) {
+        if (i == file_sub_nms.size() - 1) {
+            size_t find = file_sub_nms[i].find("ply");
+            if (find == -1) {
+                std::cout << "ply format required!" << std::endl;
+                return false;
+            }
+            scene_name_ = file_sub_nms[i].substr(0, file_sub_nms[i].size() - 4);
+        }
+        else
+            scene_path_ += file_sub_nms[i] + "/";
+    }
+
+    std::cout << "Working scene name: " << scene_name_ << std::endl;
+    std::cout << "Working path: " << scene_path_ << std::endl;
+
+    return true;
+}
+
+
+bool TreeSeg::read_clouds() {
+    // Obtain the scene file name
+    const std::string file_nm = scene_path_ + scene_name_ + ".ply";
+
     // Read the ply file
     PLYData plyIn(file_nm);
 
@@ -269,6 +308,10 @@ bool TreeSeg::extract_stems() {
     std::cout << roots_.size() << " number of roots have been extracted" << std::endl;
     std::cout << noise_idx_.size() << " points are detected as noises" << std::endl;
 
+    // Optionally output root positions
+    if (is_output_root)
+        output_root_xyz();
+
     return true;
 }
 
@@ -298,7 +341,7 @@ bool TreeSeg::group_trees() {
 }
 
 
-void TreeSeg::output_tree_seg(const std::string &file_nm) {
+void TreeSeg::output_tree_seg() {
     // Initialize containers
     std::vector<float> x, y, z;
     std::vector<int> ins;
@@ -321,7 +364,7 @@ void TreeSeg::output_tree_seg(const std::string &file_nm) {
         }
     }
 
-    // Write data to output ply
+    // Organize the data
     int nPts = x.size();
     PLYData plyOut;
     plyOut.addElement("vertex", nPts);
@@ -329,12 +372,15 @@ void TreeSeg::output_tree_seg(const std::string &file_nm) {
     plyOut.getElement("vertex").addProperty<float>("y", y);
     plyOut.getElement("vertex").addProperty<float>("z", z);
     plyOut.getElement("vertex").addProperty<int>("ins", ins);
+
+    // Write to ply
+    const std::string file_nm = scene_path_ + scene_name_ + "_seg.ply";
     plyOut.write(file_nm, DataFormat::Binary);
 
 }
 
 
-void TreeSeg::output_root_xyz(const std::string &file_nm) {
+void TreeSeg::output_root_xyz() {
     // Check if there are detected roots
     if (roots_.empty()) {
         std::cout << "No tree roots detected!" << std::endl;
@@ -342,6 +388,7 @@ void TreeSeg::output_root_xyz(const std::string &file_nm) {
     }
 
     // Write root coordinates to the file
+    const std::string file_nm = scene_path_ + scene_name_ + "_root.xyz";
     std::ofstream root_file;
     root_file.open(file_nm);
     for (int i = 0; i < roots_.size(); i++)
