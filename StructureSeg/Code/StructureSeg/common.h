@@ -23,6 +23,9 @@
 #define STRUCTURESEG_COMMON_H
 
 #include <pcl/common/common.h>
+#include <boost/program_options.hpp>
+#include <boost/property_tree/ptree.hpp>
+#include <boost/property_tree/ini_parser.hpp>
 #include <boost/graph/adjacency_list.hpp>
 #include <boost/graph/dijkstra_shortest_paths.hpp>
 
@@ -52,5 +55,10 @@ typedef boost::graph_traits<Graph>::vertex_iterator GraphVertexIterator;
 typedef boost::graph_traits<Graph>::edge_iterator GraphEdgeIterator;
 typedef boost::graph_traits<Graph>::adjacency_iterator GraphAdjacencyIterator;
 typedef boost::graph_traits<Graph>::out_edge_iterator  GraphOutEdgeIterator;
+
+// Define configuration
+namespace PO = boost::program_options;
+namespace PT = boost::property_tree;
+
 
 #endif

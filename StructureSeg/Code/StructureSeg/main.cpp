@@ -25,13 +25,12 @@
 
 int main(int argc, char** argv) {
 
-    std::string scene_file_nm = "/mnt/materials/PROJECT#3_Tree_Segmentation/Code/0_Preprocessing/Tree_Clouds/2023-01-16_44_1.ply";
+    std::string config_nm = "/mnt/materials/PROJECT#3_Tree_Segmentation/Code/StructureSeg/Config/forinstance.ini";
 //    std::string scene_file_nm(argv[1]);
 
     // Initialize a tree seg object
     TreeSeg *treeSeg = new TreeSeg();
-    if (!treeSeg->parse_scene_name(scene_file_nm))
-        exit(EXIT_FAILURE);
+    treeSeg->initialize(config_nm);
 
     std::cout << "================================================" << std::endl;
     std::cout << "1. LOADING SCENE POINT CLOUDS FROM STRUCTURENET:" << std::endl;

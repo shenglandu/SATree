@@ -58,7 +58,7 @@ public:
         float grid_size_;
 
         // Bool indicator of outputting root positions
-        bool is_output_root;
+        bool is_output_root_;
 
 private:
         // Scene background points
@@ -87,6 +87,9 @@ private:
 
         //------------------------------------ Methods --------------------------------------
 public:
+        // Initialize the configuration
+        void initialize(const std::string &config_nm);
+
         // Parse file name to get scene name and scene path
         bool parse_scene_name(const std::string &file_nm);
 
@@ -108,6 +111,9 @@ public:
 private:
         // Voxelize tree points
         void voxelize_tree_points();
+
+        // Filter extracted roots based on height
+        void filter_roots();
 
         // Build Delaunay graph
         void build_delaunay();

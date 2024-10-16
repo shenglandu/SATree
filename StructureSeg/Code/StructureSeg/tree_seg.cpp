@@ -20,10 +20,10 @@
  */
 
 #include "tree_seg.h"
-#include "voxel_grid_fix.h"
 #include "octree_extract_clusters.h"
 #include "octree_unibn.hpp"
 #include <pcl/octree/octree_pointcloud_pointvector.h>
+#include <pcl/common/io.h>
 #include <iostream>
 #include "tetgen.h"
 
@@ -42,7 +42,7 @@ TreeSeg::TreeSeg()
         , cut_height_(2.0)
         , radius_(0.15)
         , grid_size_(0.2)
-        , is_output_root(true)
+        , is_output_root_(true)
 {
 }
 
@@ -57,6 +57,46 @@ TreeSeg::~TreeSeg() {
         tree_points_ = nullptr;
         tree_props_.clear();
     }
+}
+
+
+void TreeSeg::initialize(const std::string &config_nm) {
+    // Check if the input file is ini. file
+    size_t find = config_nm.find("ini");
+    if (find == -1) {
+        std::cout << "ini format required for configuration!" << std::endl;
+        return;
+    }
+
+    // Define a property tree to load the configuration
+    PT::ptree config;
+    PT::ini_parser::read_ini(config_nm, config);
+
+    // Obtain the data path
+    bool is_bundle_process = config.get<bool>("Data.is_bundle_process");
+    if (!is_bundle_process) {
+        std::string data_path = config.get<std::string>("Data.data_path");
+        // remove the
+        data_path = data_path.substr(1, data_path.size() - 2);
+        if (!parse_scene_name(data_path)) {
+            std::cout << "fail to parse the scene data name" << std::endl;
+            return;
+        }
+    }
+    else {
+        std::cout << "Currently we don't support bundle process!" << std::endl;
+        return;
+    }
+
+    // Obtain the hyperparameters
+    db_min_pts_ = config.get<int>("RootExtraction.db_min_pts");
+    db_radius_ = config.get<float>("RootExtraction.db_radius");
+    eps_s_ = config.get<float>("RootExtraction.eps_s");
+    cut_height_ = config.get<float>("RootExtraction.cut_height");
+    radius_ = config.get<float>("RootExtraction.radius");
+    is_output_root_ = config.get<bool>("RootExtraction.is_output_root");
+    grid_size_ = config.get<float>("Voxelization.grid_size");
+
 }
 
 
@@ -299,6 +339,9 @@ bool TreeSeg::extract_stems() {
         roots_.push_back(root);
     }
 
+    // Filter the roots based on height
+    filter_roots();
+
     // Clear temporary data and return
     std::sort(noise_idx_.begin(), noise_idx_.end());
     proj_stem_pts->clear();
@@ -309,7 +352,7 @@ bool TreeSeg::extract_stems() {
     std::cout << noise_idx_.size() << " points are detected as noises" << std::endl;
 
     // Optionally output root positions
-    if (is_output_root)
+    if (is_output_root_)
         output_root_xyz();
 
     return true;
@@ -444,6 +487,35 @@ void TreeSeg::voxelize_tree_points() {
     }
     std::cout << tree_points_->size() << " points have been down-sampled to " <<  voxel_idx_.size() << std::endl;
 
+}
+
+
+void TreeSeg::filter_roots() {
+    // Check if there are detected roots
+    if (roots_.empty()) {
+        std::cout << "No tree roots detected!" << std::endl;
+        return;
+    }
+
+    // Obtain the averaged root height and median root height
+    int nRoots = roots_.size();
+    std::vector<float> root_heights;
+    for (auto ri: roots_)
+        root_heights.push_back(ri.z);
+    std::sort(root_heights.begin(), root_heights.end());
+    float avg_h = std::accumulate(root_heights.begin(), root_heights.end(), 0.0) / nRoots;
+    float median_h;
+    if (nRoots % 2 != 0)
+        median_h = root_heights[nRoots / 2];
+    else
+        median_h = (root_heights[(nRoots - 1) / 2] + root_heights[nRoots / 2]) / 2.0;
+    float thres_h = (avg_h + median_h) / 2.0;
+
+    // Retrieve roots and filter out the root that is too high above the average
+    for (auto it = roots_.end(); it != roots_.begin(); -- it) {
+        if ((*it).z - thres_h > cut_height_)
+            roots_.erase(it);
+    }
 }
 
 
