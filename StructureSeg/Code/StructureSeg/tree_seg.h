@@ -52,10 +52,14 @@ public:
 
         // Stem selection parameters
         float eps_s_;
-        float eps_dist_;
         float cut_height_;
         float radius_;
+
+        // Voxelization size
         float grid_size_;
+
+        // Tree grouping parameters
+        float scale_;
 
         // Bool indicator of outputting root positions
         bool is_output_root_;
@@ -75,6 +79,8 @@ private:
 
         // Tree root positions
         std::vector<Point3D> roots_;
+        std::vector<std::vector<int>> roots_idx_;
+        std::vector<int> tree_root_idx_;
         std::vector<GraphVertexDescriptor> root_vertices_;
 
         // Tree pseudo root (for shortest path searching, removed afterwards)
@@ -130,11 +136,17 @@ private:
         // Obtain root vertex
         void obtain_root_vertex();
 
+        // Shift the coordinates
+        Point3D shift_point_3d(Point3D p, Point3D dir, float s);
+
         // Normalize a vector
         Point3D normalize_point_3d(Point3D p);
 
         // Calculate the distance between points
         double compute_pair_distance(Point3D p1, Point3D p2);
+
+        // Calculate the distance between points
+        double compute_pair_distance_2d(Point3D p1, Point3D p2);
 
 };
 

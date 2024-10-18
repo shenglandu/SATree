@@ -37,9 +37,9 @@ typedef pcl::PointCloud <Point3D> Cloud3D;
 
 // Define the tree vertex and edge properties
 struct GraphVertexProp{
-    Point3D  coord, dir;
+    Point3D  coord, dir, shifted_coord;
     std::size_t nParent;
-    int idx, tree_id;
+    int idx, sem_id, root_id, tree_id;
     float score;
 };
 

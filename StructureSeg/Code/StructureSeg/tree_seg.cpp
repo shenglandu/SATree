@@ -38,10 +38,10 @@ TreeSeg::TreeSeg()
         , crown_id_(2)
         , ignore_id_(3)
         , eps_s_(0.5)
-        , eps_dist_(3.0)
         , cut_height_(2.0)
         , radius_(0.15)
         , grid_size_(0.2)
+        , scale_(1.5)
         , is_output_root_(true)
 {
 }
@@ -96,6 +96,7 @@ void TreeSeg::initialize(const std::string &config_nm) {
     radius_ = config.get<float>("RootExtraction.radius");
     is_output_root_ = config.get<bool>("RootExtraction.is_output_root");
     grid_size_ = config.get<float>("Voxelization.grid_size");
+    scale_ = config.get<float>("TreeGrouping.scale");
 
 }
 
@@ -189,6 +190,8 @@ bool TreeSeg::extract_stems() {
     // Initialize tree root containers
     roots_.clear();
     noise_idx_.clear();
+    roots_idx_.clear();
+    tree_root_idx_.clear();
 
     // Retrieve 2d stem points from the tree point cloud with the indices
     Cloud3D::Ptr proj_stem_pts(new Cloud3D);
@@ -201,6 +204,8 @@ bool TreeSeg::extract_stems() {
             proj_stem_pts->push_back(pi);
             stem_idx.push_back(i);
         }
+        // initialize the stem idx per tree point as -1
+        tree_root_idx_.push_back(-1);
     }
 
     // Make sure there are stem points before clustering
@@ -245,7 +250,7 @@ bool TreeSeg::extract_stems() {
         stem_ind_container.clear();
 
         // retrieve over per point in the stem cluster
-        for (int& j: proj_stem_clusters[i].indices){
+        for (int& j: proj_stem_clusters[i].indices) {
             int stem_ind = stem_idx[j];
             centroid.x += (*proj_stem_pts)[j].x;
             centroid.y += (*proj_stem_pts)[j].y;
@@ -277,7 +282,17 @@ bool TreeSeg::extract_stems() {
                 break;
             }
         }
-        if (is_floating) continue;
+        if (is_floating) {
+            for (auto& si: stem_ind_container)
+                tree_props_[si][0] = crown_id_;
+            continue;
+        }
+
+        // check if the root has sufficient length
+        if (highest - lowest <= 0.15 * cut_height_) {
+            noise_idx_.insert(noise_idx_.end(), stem_ind_container.begin(), stem_ind_container.end());
+            continue;
+        }
 
         // check if the score is sufficiently high
         if (avg_s <= eps_s_){
@@ -315,7 +330,7 @@ bool TreeSeg::extract_stems() {
             float max_s2 = *std::max_element(neigh_s2.begin(), neigh_s2.end());
             float neigh_avg_s1 = std::accumulate(neigh_s1.begin(), neigh_s1.end(), 0.0) / neigh_s1.size();
             if (neigh_avg_s1 <= eps_s_){
-                if (max_s1 <= 0.5 * eps_s_ or max_s2 > max_s1){
+                if (max_s1 <= 0.2 or max_s2 > max_s1){
                     noise_idx_.insert(noise_idx_.end(), stem_ind_container.begin(), stem_ind_container.end());
                     continue;
                 }
@@ -337,10 +352,17 @@ bool TreeSeg::extract_stems() {
         root.x /= float(n_pts);
         root.y /= float(n_pts);
         roots_.push_back(root);
+        roots_idx_.push_back(stem_ind_container);
     }
 
     // Filter the roots based on height
     filter_roots();
+
+    // Assign root indices to tree points
+    for (int root_i = 0; root_i < roots_idx_.size(); root_i ++) {
+        for (int& j: roots_idx_[root_i])
+            tree_root_idx_[j] = root_i;
+    }
 
     // Clear temporary data and return
     std::sort(noise_idx_.begin(), noise_idx_.end());
@@ -387,7 +409,7 @@ bool TreeSeg::group_trees() {
 void TreeSeg::output_tree_seg() {
     // Initialize containers
     std::vector<float> x, y, z;
-    std::vector<int> ins;
+    std::vector<int> ins, roots;
 
     // Retrive over graph vertices
     std::pair<GraphVertexIterator, GraphVertexIterator> vp = vertices(MST_);
@@ -403,6 +425,7 @@ void TreeSeg::output_tree_seg() {
                 y.push_back((*tree_points_)[j].y);
                 z.push_back((*tree_points_)[j].z);
                 ins.push_back(tree_id);
+                roots.push_back(tree_root_idx_[j]);
             }
         }
     }
@@ -415,6 +438,7 @@ void TreeSeg::output_tree_seg() {
     plyOut.getElement("vertex").addProperty<float>("y", y);
     plyOut.getElement("vertex").addProperty<float>("z", z);
     plyOut.getElement("vertex").addProperty<int>("ins", ins);
+    plyOut.getElement("vertex").addProperty<int>("r", roots);
 
     // Write to ply
     const std::string file_nm = scene_path_ + scene_name_ + "_seg.ply";
@@ -512,9 +536,11 @@ void TreeSeg::filter_roots() {
     float thres_h = (avg_h + median_h) / 2.0;
 
     // Retrieve roots and filter out the root that is too high above the average
-    for (auto it = roots_.end(); it != roots_.begin(); -- it) {
-        if ((*it).z - thres_h > cut_height_)
-            roots_.erase(it);
+    for (int i = roots_.size() - 1; i >= 0; -- i) {
+        if (roots_[i].z - thres_h > cut_height_) {
+            roots_.erase(roots_.begin() + i);
+            roots_idx_.erase(roots_idx_.begin() + i);
+        }
     }
 }
 
@@ -535,6 +561,9 @@ void TreeSeg::build_delaunay() {
         // Obtain the centralized points with its properties
         Point3D centroid(0, 0, 0), direction(0, 0, 0);
         float score = 0.;
+        int sem_id, root_id = -1;
+        int stem_count, crown_count = 0;
+        std::unordered_map<int, int> root_id_container;
         for (int& j: voxel_idx_[i]) {
             // accumulate centroid
             centroid.x += (*tree_points_)[j].x;
@@ -546,6 +575,13 @@ void TreeSeg::build_delaunay() {
             direction.z += tree_props_[j][4];
             // accumulate score
             score += tree_props_[j][1];
+            // accumulate stem count and crown count
+            if (tree_props_[j][0] == stem_id_) {
+                root_id_container[tree_root_idx_[j]] ++;
+                stem_count++;
+            }
+            else
+                crown_count++;
         }
         // average the coordinates and the score
         centroid.x /= voxel_idx_[i].size();
@@ -555,6 +591,19 @@ void TreeSeg::build_delaunay() {
         direction.y /= voxel_idx_[i].size();
         direction.z /= voxel_idx_[i].size();
         score /= voxel_idx_[i].size();
+        if (stem_count > crown_count) {
+            sem_id = stem_id_;
+            // assign the most frequent root id as the voxel root id
+            int max_count = 0;
+            for (auto ri : root_id_container) {
+                if (max_count < ri.second) {
+                    root_id = ri.first;
+                    max_count = ri.second;
+                }
+            }
+        }
+        else
+            sem_id = crown_id_;
 
         // read the point information into the vertex
         GraphVertexProp vi;
@@ -563,28 +612,39 @@ void TreeSeg::build_delaunay() {
         vi.nParent = 0;
         vi.score = score;
         vi.idx = i;
+        vi.sem_id = sem_id;
+        vi.root_id = root_id;
         vi.tree_id = -100;
+        // shift the coordinate if point is crown
+        if (vi.sem_id == stem_id_)
+            vi.shifted_coord = vi.coord;
+        else
+            vi.shifted_coord = shift_point_3d(centroid, direction, score);
+        // add vertex to the graph
         add_vertex(vi, delaunay_);
         n_pts ++;
     }
 
     // Read roots into the graph and generate the lowest pseudo root
     pseudo_root_ = Point3D(0, 0, 1000);
-    for (auto& ri: roots_) {
+    for (int i = 0; i < roots_.size(); i++) {
         // read roots into the graph
         GraphVertexProp vi;
-        vi.coord = ri;
+        vi.coord = roots_[i];
         vi.dir = Point3D(0, 0, 0);
+        vi.shifted_coord = vi.coord;
         vi.nParent = 0;
         vi.score = 1.;
         vi.idx = -1;  // -1 means the vertex is pseudo added
+        vi.sem_id = stem_id_;
+        vi.root_id = i;
         vi.tree_id = -100;
         add_vertex(vi, delaunay_);
         // accumulate to pseudo root
-        pseudo_root_.x += ri.x;
-        pseudo_root_.y += ri.y;
-        if (pseudo_root_.z > ri.z)
-            pseudo_root_.z = ri.z;
+        pseudo_root_.x += roots_[i].x;
+        pseudo_root_.y += roots_[i].y;
+        if (pseudo_root_.z > roots_[i].z)
+            pseudo_root_.z = roots_[i].z;
         // increase point count
         n_pts ++;
     }
@@ -596,9 +656,12 @@ void TreeSeg::build_delaunay() {
     GraphVertexProp vr;
     vr.coord = pseudo_root_;
     vr.dir = Point3D(0, 0, 0);
+    vr.shifted_coord = vr.coord;
     vr.nParent = 0;
     vr.score = 1.;
     vr.idx = -1;  // -1 means the vertex is pseudo added
+    vr.sem_id = stem_id_;
+    vr.root_id = -1;
     vr.tree_id = -100;
     add_vertex(vr, delaunay_);
     n_pts += 1;
@@ -648,6 +711,8 @@ void TreeSeg::extract_mst() {
         vi.coord = (delaunay_)[*vIter].coord;
         vi.nParent = (delaunay_)[*vIter].nParent;
         vi.idx = (delaunay_)[*vIter].idx;
+        vi.sem_id = (delaunay_)[*vIter].sem_id;
+        vi.root_id = (delaunay_)[*vIter].root_id;
         vi.tree_id = (delaunay_)[*vIter].tree_id;
         add_vertex(vi, MST_);
     }
@@ -680,26 +745,32 @@ void TreeSeg::assign_tree_id() {
     // Retrieve vertices in MST and assign tree id
     for (int i = 0; i < root_vertices_.size(); i++) {
         GraphVertexDescriptor ri = root_vertices_[i];
-        std::vector<GraphVertexDescriptor> stack;
+        std::vector<GraphVertexDescriptor> stack, stack_container;
         stack.push_back(ri);
+        int tree_count, crown_count = 0;
         while (true) {
             GraphVertexDescriptor vi = stack.back();
             (MST_)[vi].tree_id = i;
+            tree_count ++;
+            if ((MST_)[vi].sem_id == crown_id_) crown_count++;
             stack.pop_back();
+            stack_container.push_back(vi);
             std::pair<GraphAdjacencyIterator, GraphAdjacencyIterator> aj = adjacent_vertices(vi, MST_);
             for (GraphAdjacencyIterator aIter = aj.first; aIter != aj.second; ++aIter) {
                 if (*aIter != (MST_)[vi].nParent) {
-                    Point3D ps = (MST_)[vi].coord;
-                    Point3D pt = (MST_)[*aIter].coord;
-//                    float dist = pcl::euclideanDistance(ps, pt);
-//                    if (dist <= 3.0)  stack.push_back(*aIter);
-                    stack.push_back(*aIter);
+                        stack.push_back(*aIter);
                 }
             }
-            if (stack.empty())
+            if (stack.empty()) {
+//                if (crown_count == 0) {
+//                    for (auto vj: stack_container)
+//                        (MST_)[vj].tree_id = -100;
+//                }
                 break;
+            }
         }
     }
+
 }
 
 
@@ -708,36 +779,31 @@ void TreeSeg::compute_graph_weights() {
     std::pair<GraphEdgeIterator, GraphEdgeIterator> ep = edges(delaunay_);
     GraphVertexDescriptor vs, vt;
     Point3D ps, pt, ds, dt;
-    float s1, s2;
 
     // Retrieve over edges
     for (GraphEdgeIterator eIter = ep.first; eIter != ep.second; ++eIter) {
         // obtain coordinates of source and target vertex
         vs = source(*eIter, delaunay_);
         vt = target(*eIter, delaunay_);
-        ps = (delaunay_)[vs].coord;
-        pt = (delaunay_)[vt].coord;
-        // obtain the score and direction information
-        ds = (delaunay_)[vs].dir;
-        dt = (delaunay_)[vt].dir;
-        s1 = 1.0 - (delaunay_)[vs].score;
-        s2 = 1.0 - (delaunay_)[vt].score;
-        if (s1 < 0) s1 = 0.;
-        if (s2 < 0) s2 = 0.;
-        // normalize the directions
-        ds = normalize_point_3d(ds);
-        dt = normalize_point_3d(dt);
-        // shift the original coordinates based on scaled offsets
-        ps.getArray3fMap() = ps.getArray3fMap() + 1.5 * s1 * ds.getArray3fMap();
-        pt.getArray3fMap() = pt.getArray3fMap() + 1.5 * s2 * dt.getArray3fMap();
+        double dist = compute_pair_distance((delaunay_)[vs].coord, (delaunay_)[vt].coord);
+        double shifted_dist = compute_pair_distance((delaunay_)[vs].shifted_coord, (delaunay_)[vt].shifted_coord);
+        double s = ((delaunay_)[vs].score + (delaunay_)[vt].score) / 2.0;
+//        // check the pairwise distance if both vertices are stem
+        if ((delaunay_)[vs].sem_id == stem_id_ and (delaunay_[vt].sem_id == stem_id_)) {
+            if ((delaunay_)[vs].root_id == (delaunay_)[vt].root_id) {
+                s = std::max(0., 1. - s);
+                (delaunay_)[*eIter].nWeight = s * dist;
+                continue;
+            }
+        }
         // set the weight as the shifted distance between source and target
-        (delaunay_)[*eIter].nWeight = compute_pair_distance(ps, pt);
+        (delaunay_)[*eIter].nWeight = shifted_dist;
     }
 
     // Assign pseudo edges between pseudo root and roots with weight 0
     for (int i = 0; i < root_vertices_.size(); i++){
         GraphVertexDescriptor ri = root_vertices_[i];
-        if (!edge(pseudo_root_vertex_, ri, delaunay_).second)  {
+        if (!edge(pseudo_root_vertex_, ri, delaunay_).second){
             GraphEdgeProp ei;
             ei.nWeight = 0.0;
             add_edge(pseudo_root_vertex_, ri, ei, delaunay_);
@@ -773,6 +839,34 @@ void TreeSeg::obtain_root_vertex() {
 }
 
 
+Point3D TreeSeg::shift_point_3d(Point3D p, Point3D dir, float s) {
+    // Normailze the direction
+    dir = normalize_point_3d(dir);
+
+    // Inverse the score
+    s = std::max(1. - s, 0.);
+
+    // Fix the scale with minimum 2d projection
+    float scale = 1000.;
+    Point3D p_2_r;
+    for (auto& ri: roots_) {
+        p_2_r.getArray3fMap() = ri.getArray3fMap() - p.getArray3fMap();
+        if (p_2_r.x * dir.x > 0 and p_2_r.y * dir.y > 0) {
+            float proj = compute_pair_distance_2d(p, ri);
+            if (scale > proj)
+                scale = proj;
+        }
+    }
+    if (scale == 1000.)
+        scale = scale_;
+
+    // Shift the coordinate
+    p.getArray3fMap() += scale * s * dir.getArray3fMap();
+
+    return p;
+}
+
+
 Point3D TreeSeg::normalize_point_3d(Point3D p) {
     // Initialize the origin
     Point3D po(0, 0, 0);
@@ -797,5 +891,16 @@ double TreeSeg::compute_pair_distance(Point3D p1, Point3D p2) {
 
     // Obtain distance
     double dist = sqrt(dx * dx + dy * dy + dz * dz);
+    return dist;
+}
+
+
+double TreeSeg::compute_pair_distance_2d(Point3D p1, Point3D p2) {
+    // Compute dx, dy, dz
+    double dx = p1.x - p2.x;
+    double dy = p1.y - p2.y;
+
+    // Obtain distance
+    double dist = sqrt(dx * dx + dy * dy);
     return dist;
 }
