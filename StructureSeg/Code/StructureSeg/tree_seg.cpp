@@ -25,6 +25,7 @@
 #include <pcl/octree/octree_pointcloud_pointvector.h>
 #include <pcl/common/io.h>
 #include <iostream>
+#include <math.h>
 #include "tetgen.h"
 
 
@@ -41,7 +42,7 @@ TreeSeg::TreeSeg()
         , cut_height_(2.0)
         , radius_(0.15)
         , grid_size_(0.2)
-        , scale_(1.5)
+        , scale_(0)
         , is_output_root_(true)
 {
 }
@@ -409,7 +410,8 @@ bool TreeSeg::group_trees() {
 void TreeSeg::output_tree_seg() {
     // Initialize containers
     std::vector<float> x, y, z;
-    std::vector<int> ins, roots;
+    std::vector<int> ins;
+    std::vector<int> r, g, b;
 
     // Retrive over graph vertices
     std::pair<GraphVertexIterator, GraphVertexIterator> vp = vertices(MST_);
@@ -419,15 +421,43 @@ void TreeSeg::output_tree_seg() {
             int tree_id = MST_[vi].tree_id;
             int voxel_id = MST_[vi].idx;
             if (voxel_id < 0) continue;
+            // generate random colors
+            int red = colormap_[tree_id][0];
+            int green = colormap_[tree_id][1];
+            int blue = colormap_[tree_id][2];
             // retrieve raw points in current voxel
             for (int& j: voxel_idx_[voxel_id]) {
                 x.push_back((*tree_points_)[j].x);
                 y.push_back((*tree_points_)[j].y);
                 z.push_back((*tree_points_)[j].z);
                 ins.push_back(tree_id);
-                roots.push_back(tree_root_idx_[j]);
+                r.push_back(red);
+                g.push_back(green);
+                b.push_back(blue);
             }
         }
+    }
+
+    // Retrieve over other points
+    for (int i = 0; i < other_points_->size(); i++) {
+        x.push_back((*other_points_)[i].x);
+        y.push_back((*other_points_)[i].y);
+        z.push_back((*other_points_)[i].z);
+        ins.push_back(-100);
+        r.push_back(0);
+        g.push_back(0);
+        b.push_back(0);
+    }
+
+    // Retrieve over noisy points
+    for (int ni = 0; ni < noise_idx_.size(); ni++) {
+        x.push_back((*tree_points_)[noise_idx_[ni]].x);
+        y.push_back((*tree_points_)[noise_idx_[ni]].y);
+        z.push_back((*tree_points_)[noise_idx_[ni]].z);
+        ins.push_back(-100);
+        r.push_back(0);
+        g.push_back(0);
+        b.push_back(0);
     }
 
     // Organize the data
@@ -438,7 +468,9 @@ void TreeSeg::output_tree_seg() {
     plyOut.getElement("vertex").addProperty<float>("y", y);
     plyOut.getElement("vertex").addProperty<float>("z", z);
     plyOut.getElement("vertex").addProperty<int>("ins", ins);
-    plyOut.getElement("vertex").addProperty<int>("r", roots);
+    plyOut.getElement("vertex").addProperty<int>("red", r);
+    plyOut.getElement("vertex").addProperty<int>("green", g);
+    plyOut.getElement("vertex").addProperty<int>("blue", b);
 
     // Write to ply
     const std::string file_nm = scene_path_ + scene_name_ + "_seg.ply";
@@ -709,11 +741,14 @@ void TreeSeg::extract_mst() {
     for (GraphVertexIterator vIter = vp.first; vIter != vp.second; ++vIter) {
         GraphVertexProp vi;
         vi.coord = (delaunay_)[*vIter].coord;
+        vi.dir = (delaunay_)[*vIter].dir;
+        vi.shifted_coord = (delaunay_)[*vIter].shifted_coord;
         vi.nParent = (delaunay_)[*vIter].nParent;
         vi.idx = (delaunay_)[*vIter].idx;
         vi.sem_id = (delaunay_)[*vIter].sem_id;
         vi.root_id = (delaunay_)[*vIter].root_id;
         vi.tree_id = (delaunay_)[*vIter].tree_id;
+        vi.score = (delaunay_)[*vIter].score;
         add_vertex(vi, MST_);
     }
 
@@ -742,12 +777,16 @@ void TreeSeg::assign_tree_id() {
     // Remote pseudo root
     clear_vertex(pseudo_root_vertex_, MST_);
 
+    // Initialize colormap
+    colormap_.clear();
+
     // Retrieve vertices in MST and assign tree id
     for (int i = 0; i < root_vertices_.size(); i++) {
         GraphVertexDescriptor ri = root_vertices_[i];
         std::vector<GraphVertexDescriptor> stack, stack_container;
         stack.push_back(ri);
         int tree_count, crown_count = 0;
+        // assign tree id to graph vertices
         while (true) {
             GraphVertexDescriptor vi = stack.back();
             (MST_)[vi].tree_id = i;
@@ -761,14 +800,15 @@ void TreeSeg::assign_tree_id() {
                         stack.push_back(*aIter);
                 }
             }
-            if (stack.empty()) {
-//                if (crown_count == 0) {
-//                    for (auto vj: stack_container)
-//                        (MST_)[vj].tree_id = -100;
-//                }
+            if (stack.empty())
                 break;
-            }
         }
+        // randomize a color
+        int red = rand() % 255;
+        int green = rand() % 255;
+        int blue = rand() % 255;
+        std::array<int, 3> c{{red, green, blue}};
+        colormap_.push_back(c);
     }
 
 }
@@ -788,13 +828,17 @@ void TreeSeg::compute_graph_weights() {
         double dist = compute_pair_distance((delaunay_)[vs].coord, (delaunay_)[vt].coord);
         double shifted_dist = compute_pair_distance((delaunay_)[vs].shifted_coord, (delaunay_)[vt].shifted_coord);
         double s = ((delaunay_)[vs].score + (delaunay_)[vt].score) / 2.0;
-//        // check the pairwise distance if both vertices are stem
+        // check the pairwise distance if both vertices are stem
         if ((delaunay_)[vs].sem_id == stem_id_ and (delaunay_[vt].sem_id == stem_id_)) {
-            if ((delaunay_)[vs].root_id == (delaunay_)[vt].root_id) {
-                s = std::max(0., 1. - s);
+            if ((delaunay_)[vs].root_id == (delaunay_)[vt].root_id and dist <= 2 * grid_size_) {
+                s = std::max(1 - s, 0.);
                 (delaunay_)[*eIter].nWeight = s * dist;
                 continue;
             }
+        }
+        if (dist >= 5 * grid_size_) {
+            (delaunay_)[*eIter].nWeight = 20 * dist;
+            continue;
         }
         // set the weight as the shifted distance between source and target
         (delaunay_)[*eIter].nWeight = shifted_dist;
@@ -839,29 +883,15 @@ void TreeSeg::obtain_root_vertex() {
 }
 
 
-Point3D TreeSeg::shift_point_3d(Point3D p, Point3D dir, float s) {
+Point3D TreeSeg::shift_point_3d(Point3D p, Point3D dir, double s) {
     // Normailze the direction
     dir = normalize_point_3d(dir);
 
-    // Inverse the score
-    s = std::max(1. - s, 0.);
-
-    // Fix the scale with minimum 2d projection
-    float scale = 1000.;
-    Point3D p_2_r;
-    for (auto& ri: roots_) {
-        p_2_r.getArray3fMap() = ri.getArray3fMap() - p.getArray3fMap();
-        if (p_2_r.x * dir.x > 0 and p_2_r.y * dir.y > 0) {
-            float proj = compute_pair_distance_2d(p, ri);
-            if (scale > proj)
-                scale = proj;
-        }
-    }
-    if (scale == 1000.)
-        scale = scale_;
+    // Inverse the score;
+    s = std::max(1 - s, 0.);
 
     // Shift the coordinate
-    p.getArray3fMap() += scale * s * dir.getArray3fMap();
+    p.getArray3fMap() += scale_ * s * dir.getArray3fMap();
 
     return p;
 }

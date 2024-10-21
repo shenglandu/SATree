@@ -72,12 +72,14 @@ private:
         Cloud3D::Ptr tree_points_;
         std::vector<std::array<float, 5>> tree_props_;  // semantic prediction, score, offset
 
-        // Scene point indices
+        // Scene noise indices
         std::vector<int> noise_idx_;
+
+        // Tree point to voxel map indices
         std::vector<int> tree_voxel_map_idx_;
         std::vector<std::vector<int>> voxel_idx_;
 
-        // Tree root positions
+        // Tree root positions and tree root cluster indices
         std::vector<Point3D> roots_;
         std::vector<std::vector<int>> roots_idx_;
         std::vector<int> tree_root_idx_;
@@ -86,6 +88,9 @@ private:
         // Tree pseudo root (for shortest path searching, removed afterwards)
         Point3D pseudo_root_;
         GraphVertexDescriptor pseudo_root_vertex_;
+
+        // Tree ID colormap
+        std::vector<std::array<int, 3>> colormap_;
 
         // Tree graphs
         Graph delaunay_;
@@ -137,7 +142,7 @@ private:
         void obtain_root_vertex();
 
         // Shift the coordinates
-        Point3D shift_point_3d(Point3D p, Point3D dir, float s);
+        Point3D shift_point_3d(Point3D p, Point3D dir, double s);
 
         // Normalize a vector
         Point3D normalize_point_3d(Point3D p);
