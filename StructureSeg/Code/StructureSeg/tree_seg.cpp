@@ -42,7 +42,9 @@ TreeSeg::TreeSeg()
         , cut_height_(2.0)
         , radius_(0.15)
         , grid_size_(0.2)
-        , scale_(0)
+        , scale_(1.0)
+        , eps_dist_(1.0)
+        , shrink_ratio_(1.0)
         , is_output_root_(true)
 {
 }
@@ -98,6 +100,8 @@ void TreeSeg::initialize(const std::string &config_nm) {
     is_output_root_ = config.get<bool>("RootExtraction.is_output_root");
     grid_size_ = config.get<float>("Voxelization.grid_size");
     scale_ = config.get<float>("TreeGrouping.scale");
+    eps_dist_ = config.get<float>("TreeGrouping.eps_dist");
+    shrink_ratio_ = config.get<float>("TreeGrouping.shrink_ratio");
 
 }
 
@@ -422,9 +426,12 @@ void TreeSeg::output_tree_seg() {
             int voxel_id = MST_[vi].idx;
             if (voxel_id < 0) continue;
             // generate random colors
-            int red = colormap_[tree_id][0];
-            int green = colormap_[tree_id][1];
-            int blue = colormap_[tree_id][2];
+            int red = 0, green = 0, blue = 0;
+            if (tree_id > -100) {
+                red = colormap_[tree_id][0];
+                green = colormap_[tree_id][1];
+                blue = colormap_[tree_id][2];
+            }
             // retrieve raw points in current voxel
             for (int& j: voxel_idx_[voxel_id]) {
                 x.push_back((*tree_points_)[j].x);
@@ -593,8 +600,8 @@ void TreeSeg::build_delaunay() {
         // Obtain the centralized points with its properties
         Point3D centroid(0, 0, 0), direction(0, 0, 0);
         float score = 0.;
-        int sem_id, root_id = -1;
-        int stem_count, crown_count = 0;
+        int sem_id = -1, root_id = -1;
+        int stem_count = 0, crown_count = 0;
         std::unordered_map<int, int> root_id_container;
         for (int& j: voxel_idx_[i]) {
             // accumulate centroid
@@ -608,7 +615,7 @@ void TreeSeg::build_delaunay() {
             // accumulate score
             score += tree_props_[j][1];
             // accumulate stem count and crown count
-            if (tree_props_[j][0] == stem_id_) {
+            if (int(tree_props_[j][0]) == stem_id_) {
                 root_id_container[tree_root_idx_[j]] ++;
                 stem_count++;
             }
@@ -647,11 +654,12 @@ void TreeSeg::build_delaunay() {
         vi.sem_id = sem_id;
         vi.root_id = root_id;
         vi.tree_id = -100;
-        // shift the coordinate if point is crown
-        if (vi.sem_id == stem_id_)
-            vi.shifted_coord = vi.coord;
-        else
-            vi.shifted_coord = shift_point_3d(centroid, direction, score);
+//        // shift the coordinate if point is crown
+//        if (vi.sem_id == stem_id_)
+//            vi.shifted_coord = vi.coord;
+//        else
+//            vi.shifted_coord = shift_point_3d(centroid, direction, score);
+        vi.shifted_coord = shift_point_3d(centroid, direction, score);
         // add vertex to the graph
         add_vertex(vi, delaunay_);
         n_pts ++;
@@ -777,33 +785,44 @@ void TreeSeg::assign_tree_id() {
     // Remote pseudo root
     clear_vertex(pseudo_root_vertex_, MST_);
 
-    // Initialize colormap
-    colormap_.clear();
-
     // Retrieve vertices in MST and assign tree id
+    int tree_id = 0;
+    std::vector<GraphVertexDescriptor> tree_stack, tree_container;
     for (int i = 0; i < root_vertices_.size(); i++) {
+        tree_stack.clear();
+        tree_container.clear();
         GraphVertexDescriptor ri = root_vertices_[i];
-        std::vector<GraphVertexDescriptor> stack, stack_container;
-        stack.push_back(ri);
-        int tree_count, crown_count = 0;
+        tree_stack.push_back(ri);
+        int crown_count = 0;
         // assign tree id to graph vertices
         while (true) {
-            GraphVertexDescriptor vi = stack.back();
-            (MST_)[vi].tree_id = i;
-            tree_count ++;
+            GraphVertexDescriptor vi = tree_stack.back();
+            (MST_)[vi].tree_id = tree_id;
             if ((MST_)[vi].sem_id == crown_id_) crown_count++;
-            stack.pop_back();
-            stack_container.push_back(vi);
+            tree_stack.pop_back();
+            tree_container.push_back(vi);
             std::pair<GraphAdjacencyIterator, GraphAdjacencyIterator> aj = adjacent_vertices(vi, MST_);
             for (GraphAdjacencyIterator aIter = aj.first; aIter != aj.second; ++aIter) {
                 if (*aIter != (MST_)[vi].nParent) {
-                        stack.push_back(*aIter);
+                    double dist = compute_pair_distance((MST_)[vi].coord, (MST_)[*aIter].coord);
+                    if (dist <= eps_dist_)
+                        tree_stack.push_back(*aIter);
                 }
             }
-            if (stack.empty())
+            if (tree_stack.empty()) {
+                if (crown_count == 0) {
+                    for (auto vj: tree_container)
+                        (MST_)[vj].tree_id = -100;
+                }
                 break;
+            }
         }
-        // randomize a color
+        tree_id ++;
+    }
+
+    // Initialize colormap
+    colormap_.clear();
+    for (int i = 0; i < tree_id; i++) {
         int red = rand() % 255;
         int green = rand() % 255;
         int blue = rand() % 255;
@@ -811,6 +830,7 @@ void TreeSeg::assign_tree_id() {
         colormap_.push_back(c);
     }
 
+    std::cout << tree_id << " trees have been assigned" << std::endl;
 }
 
 
@@ -827,15 +847,14 @@ void TreeSeg::compute_graph_weights() {
         vt = target(*eIter, delaunay_);
         double dist = compute_pair_distance((delaunay_)[vs].coord, (delaunay_)[vt].coord);
         double shifted_dist = compute_pair_distance((delaunay_)[vs].shifted_coord, (delaunay_)[vt].shifted_coord);
-        double s = ((delaunay_)[vs].score + (delaunay_)[vt].score) / 2.0;
-        // check the pairwise distance if both vertices are stem
+        // shrink the pairwise distance if both vertices are stem
         if ((delaunay_)[vs].sem_id == stem_id_ and (delaunay_[vt].sem_id == stem_id_)) {
             if ((delaunay_)[vs].root_id == (delaunay_)[vt].root_id and dist <= 2 * grid_size_) {
-                s = std::max(1 - s, 0.);
-                (delaunay_)[*eIter].nWeight = s * dist;
+                (delaunay_)[*eIter].nWeight = shrink_ratio_ * dist;
                 continue;
             }
         }
+        // enlarge the pairwise distance if edge is long
         if (dist >= 5 * grid_size_) {
             (delaunay_)[*eIter].nWeight = 20 * dist;
             continue;

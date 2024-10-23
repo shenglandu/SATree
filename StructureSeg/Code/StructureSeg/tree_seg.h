@@ -60,6 +60,8 @@ public:
 
         // Tree grouping parameters
         float scale_;
+        float eps_dist_;
+        float shrink_ratio_;
 
         // Bool indicator of outputting root positions
         bool is_output_root_;
