@@ -357,6 +357,7 @@ bool TreeSeg::extract_stems() {
         root.x /= float(n_pts);
         root.y /= float(n_pts);
         roots_.push_back(root);
+        //roots_.push_back((*tree_points_)[lowest_idx]);
         roots_idx_.push_back(stem_ind_container);
     }
 
@@ -654,11 +655,7 @@ void TreeSeg::build_delaunay() {
         vi.sem_id = sem_id;
         vi.root_id = root_id;
         vi.tree_id = -100;
-//        // shift the coordinate if point is crown
-//        if (vi.sem_id == stem_id_)
-//            vi.shifted_coord = vi.coord;
-//        else
-//            vi.shifted_coord = shift_point_3d(centroid, direction, score);
+        // shift the coordinate if point is crown
         vi.shifted_coord = shift_point_3d(centroid, direction, score);
         // add vertex to the graph
         add_vertex(vi, delaunay_);
@@ -879,7 +876,7 @@ void TreeSeg::compute_graph_weights() {
 
 
 void TreeSeg::obtain_root_vertex() {
-    // Obtain the root vertices and pseudo root vertex
+    // Obtain the pseudo root vertex
     std::pair<GraphVertexIterator, GraphVertexIterator> vp = vertices(delaunay_);
     for (GraphVertexIterator vIter = vp.first; vIter != vp.second; ++vIter)
     {
@@ -887,14 +884,21 @@ void TreeSeg::obtain_root_vertex() {
         double dist_2_pseudo = compute_pair_distance(pi, pseudo_root_);
         if (dist_2_pseudo <= 0.0001) {
             pseudo_root_vertex_ = *vIter;
-            continue;
+            break;
         }
-        for (auto& ri: roots_) {
-            double dist_2_ri = compute_pair_distance(pi, ri);
-            if (dist_2_ri <= 0.0001)
-            {
+    }
+
+    // Obtain root vertices
+    root_vertices_.clear();
+    for (auto& ri: roots_) {
+        for (GraphVertexIterator vIter = vp.first; vIter != vp.second; ++vIter)
+        {
+            Point3D pi = (delaunay_)[*vIter].coord;
+            double dist_2_pi = compute_pair_distance(pi, ri);
+            if (dist_2_pi <= 0.0001) {
                 GraphVertexDescriptor vr = *vIter;
                 root_vertices_.push_back(vr);
+                break;
             }
         }
     }
