@@ -19,8 +19,8 @@
  *
  */
 
-#ifndef STRUCTURESEG_COMMON_H
-#define STRUCTURESEG_COMMON_H
+#ifndef SASEG_COMMON_H
+#define SASEG_COMMON_H
 
 #include <pcl/common/common.h>
 #include <boost/program_options.hpp>

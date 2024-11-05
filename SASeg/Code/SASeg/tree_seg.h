@@ -19,8 +19,8 @@
  *
  */
 
-#ifndef STRUCTURESEG_TREE_SEG_H
-#define STRUCTURESEG_TREE_SEG_H
+#ifndef SASEG_TREE_SEG_H
+#define SASEG_TREE_SEG_H
 
 #include "common.h"
 #include "happly.h"

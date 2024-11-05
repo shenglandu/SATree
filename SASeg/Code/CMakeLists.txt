@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.12 FATAL_ERROR)
 
-project(StructureSeg)
+project(SASeg)
 
 # Set C++ standard
 set(CMAKE_CXX_STANDARD 14)
@@ -35,15 +35,15 @@ add_subdirectory(3rd_party/tetgen)
 # Set project sources
 set(PROJECT_SOURCES
         3rd_party/octree/octree_extract_clusters.cpp
-        StructureSeg/main.cpp
-        StructureSeg/tree_seg.cpp
+        SASeg/main.cpp
+        SASeg/tree_seg.cpp
         )
 
 # Add executable target
-add_executable(StructureSeg ${PROJECT_SOURCES})
+add_executable(SASeg ${PROJECT_SOURCES})
 
 # Add include directories to target
-target_include_directories(StructureSeg PUBLIC
+target_include_directories(SASeg PUBLIC
         ${PCL_INCLUDE_DIRS} # PCL include directories
         ${Boost_INCLUDE_DIRS} # Boost include directories
         ${Boost_headers_DIR} # Boost header directories
@@ -53,7 +53,7 @@ target_include_directories(StructureSeg PUBLIC
         )
 
 # Link libraries to target
-target_link_libraries(StructureSeg PUBLIC
+target_link_libraries(SASeg PUBLIC
         TETGEN # TETGEN Library
         ${PCL_LIBRARIES} # PCL libraries
         ${VTK_LIBRARIES} # VTK libraries
