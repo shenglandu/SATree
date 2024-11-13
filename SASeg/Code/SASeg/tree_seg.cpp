@@ -54,11 +54,13 @@ TreeSeg::~TreeSeg() {
     if (other_points_){
         other_points_->clear();
         other_points_ = nullptr;
+        other_gt_ins_.clear();
     }
     if (tree_points_){
         tree_points_->clear();
         tree_points_ = nullptr;
         tree_props_.clear();
+        tree_gt_ins_.clear();
     }
 }
 
@@ -91,7 +93,7 @@ void TreeSeg::initialize(const std::string &config_nm) {
         return;
     }
 
-    // Obtain the hyperparameters
+    // Obtain the configuration settings
     db_min_pts_ = config.get<int>("RootExtraction.db_min_pts");
     db_radius_ = config.get<float>("RootExtraction.db_radius");
     eps_s_ = config.get<float>("RootExtraction.eps_s");
@@ -147,6 +149,9 @@ bool TreeSeg::read_clouds() {
 
     // Read the ply file
     PLYData plyIn(file_nm);
+    tree_props_.clear();
+    tree_gt_ins_.clear();
+    other_gt_ins_.clear();
 
     // Access the data, coordinates, scores, offsets, and GT instance label
     std::vector<float> x = plyIn.getElement("vertex").getProperty<float>("x");
@@ -157,7 +162,7 @@ bool TreeSeg::read_clouds() {
     std::vector<float> dy = plyIn.getElement("vertex").getProperty<float>("dy");
     std::vector<float> dz = plyIn.getElement("vertex").getProperty<float>("dz");
     std::vector<int> pred = plyIn.getElement("vertex").getProperty<int>("preds");
-    // std::vector<int> ins = plyIn.getElement("vertex").getProperty<int>("ins");
+    std::vector<int> ins = plyIn.getElement("vertex").getProperty<int>("ins");
 
     // Read cloud point by point
     for (int i = 0; i < x.size(); i++) {
@@ -168,11 +173,13 @@ bool TreeSeg::read_clouds() {
         // Push the point into corresponding clouds according to its predicted semantic code
         if (sem_id == other_id_ or sem_id == ignore_id_){
             other_points_->push_back(pi);
+            other_gt_ins_.push_back(ins[i]);
         }
         else{
             tree_points_->push_back(pi);
             std::array<float, 5> prop{{float(sem_id), scores[i], dx[i], dy[i], dz[i]}};
             tree_props_.push_back(prop);
+            tree_gt_ins_.push_back(ins[i]);
         }
     }
 
@@ -415,7 +422,7 @@ bool TreeSeg::group_trees() {
 void TreeSeg::output_tree_seg() {
     // Initialize containers
     std::vector<float> x, y, z;
-    std::vector<int> ins;
+    std::vector<int> pred_ins, gt_ins;
     std::vector<int> r, g, b;
 
     // Retrive over graph vertices
@@ -438,7 +445,8 @@ void TreeSeg::output_tree_seg() {
                 x.push_back((*tree_points_)[j].x);
                 y.push_back((*tree_points_)[j].y);
                 z.push_back((*tree_points_)[j].z);
-                ins.push_back(tree_id);
+                pred_ins.push_back(tree_id);
+                gt_ins.push_back(tree_gt_ins_[j]);
                 r.push_back(red);
                 g.push_back(green);
                 b.push_back(blue);
@@ -451,7 +459,8 @@ void TreeSeg::output_tree_seg() {
         x.push_back((*other_points_)[i].x);
         y.push_back((*other_points_)[i].y);
         z.push_back((*other_points_)[i].z);
-        ins.push_back(-100);
+        pred_ins.push_back(-100);
+        gt_ins.push_back(other_gt_ins_[i]);
         r.push_back(0);
         g.push_back(0);
         b.push_back(0);
@@ -462,7 +471,8 @@ void TreeSeg::output_tree_seg() {
         x.push_back((*tree_points_)[noise_idx_[ni]].x);
         y.push_back((*tree_points_)[noise_idx_[ni]].y);
         z.push_back((*tree_points_)[noise_idx_[ni]].z);
-        ins.push_back(-100);
+        pred_ins.push_back(-100);
+        gt_ins.push_back(tree_gt_ins_[noise_idx_[ni]]);
         r.push_back(0);
         g.push_back(0);
         b.push_back(0);
@@ -475,7 +485,8 @@ void TreeSeg::output_tree_seg() {
     plyOut.getElement("vertex").addProperty<float>("x", x);
     plyOut.getElement("vertex").addProperty<float>("y", y);
     plyOut.getElement("vertex").addProperty<float>("z", z);
-    plyOut.getElement("vertex").addProperty<int>("ins", ins);
+    plyOut.getElement("vertex").addProperty<int>("pred_ins", pred_ins);
+    plyOut.getElement("vertex").addProperty<int>("gt_ins", gt_ins);
     plyOut.getElement("vertex").addProperty<int>("red", r);
     plyOut.getElement("vertex").addProperty<int>("green", g);
     plyOut.getElement("vertex").addProperty<int>("blue", b);

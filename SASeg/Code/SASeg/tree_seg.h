@@ -69,10 +69,12 @@ public:
 private:
         // Scene background points
         Cloud3D::Ptr other_points_;
+        std::vector<int> other_gt_ins_;
 
         // Scene tree points and properties
         Cloud3D::Ptr tree_points_;
         std::vector<std::array<float, 5>> tree_props_;  // semantic prediction, score, offset
+        std::vector<int> tree_gt_ins_;
 
         // Scene noise indices
         std::vector<int> noise_idx_;
