@@ -84,10 +84,11 @@ def get_structure_from_qsm(file_qsm, file_trans, points, eps_d=0.8, scale=10):
     return gaussian_scores, stem_filter, noise_filter
 
 
-def crop_clouds(cloud, stride):
+def crop_clouds(cloud, split, stride):
     """
     Crop the input cloud into square blocks of clouds
         cloud: the input point cloud
+        split: the dataset split
         stride: the cropping size
     Return:
         block: the blocks of clouds
@@ -100,17 +101,39 @@ def crop_clouds(cloud, stride):
 
     # Retrieve over blocks
     blocks = []
-    for (x, y) in cells:
-        xcond = (cloud[:, 0] - cloud_min[0] <= x + stride) & (cloud[:, 0] - cloud_min[0] >= x)
-        ycond = (cloud[:, 1] - cloud_min[1] <= y + stride) & (cloud[:, 1] - cloud_min[1] >= y)
-        cond = xcond & ycond
-        block = cloud[cond, :]
-        blocks.append(block)
+    if split == 'train' or split == 'val':
+        for (x, y) in cells:
+            xcond = (cloud[:, 0] - cloud_min[0] <= x + stride) & (cloud[:, 0] - cloud_min[0] >= x)
+            ycond = (cloud[:, 1] - cloud_min[1] <= y + stride) & (cloud[:, 1] - cloud_min[1] >= y)
+            cond = xcond & ycond
+            block = cloud[cond, :]
+            blocks.append(block)
+    else:
+        # make sure that each block covers whole tree instances for fair evaluation
+        cloud_labels = cloud[:, 6]
+        visited_labels = [-100]
+        for (x, y) in cells:
+            xcond = (cloud[:, 0] - cloud_min[0] <= x + stride) & (cloud[:, 0] - cloud_min[0] >= x)
+            ycond = (cloud[:, 1] - cloud_min[1] <= y + stride) & (cloud[:, 1] - cloud_min[1] >= y)
+            cond = xcond & ycond
+            # mask the complete tree instances within the current cell
+            uniq_labels = np.unique(cloud_labels[cond])
+            for l in uniq_labels:
+                if l in visited_labels:
+                    if l >= 0:
+                        cond[cloud_labels == l] = False
+                    continue
+                cond[cloud_labels == l] = True
+                visited_labels.append(l)
+            block = cloud[cond, :]
+            blocks.append(block)
+
+            print('current block is done')
 
     return blocks
 
 
-def prepare_files(files, out_path, crop_size=50, thres_num=1e5):
+def prepare_files(files, out_path, split, crop_size=50, thres_num=1e5):
     """
     Prepare the files for network training and validation
         files: the file list
@@ -120,9 +143,14 @@ def prepare_files(files, out_path, crop_size=50, thres_num=1e5):
     counter = 0
     for file in files:
         cloud_name = basename(file).strip('.ply')
+
+        if '2023-01-09_tum_campus' in cloud_name or '2023-01-12_57' in cloud_name:
+            continue
+        print('Cutting scene: ' + cloud_name)
+
         data = ply.read_ply(file)
         points = np.vstack((data['x'], data['y'], data['z'], data['i'], data['s'], data['class'], data['label'])).T
-        blocks = crop_clouds(points, stride=crop_size)
+        blocks = crop_clouds(points, split=split, stride=crop_size)
         for bi, block in enumerate(blocks):
             if len(block) <= thres_num:
                 counter += 1
@@ -264,18 +292,19 @@ if __name__ == '__main__':
     train_path = join(root_path, split)
     makedirs(train_path, exist_ok=True)
     train_files = [join(process_path, scene_names[i] + '.ply') for i in train_split]
-    prepare_files(train_files, train_path, crop_size=50)
+    prepare_files(train_files, train_path, split=split, crop_size=50)
 
     # Make the validation path
     split = 'val'
     val_path = join(root_path, split)
     makedirs(val_path, exist_ok=True)
     val_files = [join(process_path, scene_names[i] + '.ply') for i in val_split]
-    prepare_files(val_files, val_path, crop_size=50)
+    prepare_files(val_files, val_path, split=split, crop_size=50)
 
     # Make the test path
     split = 'test'
     test_path = join(root_path, split)
     makedirs(test_path, exist_ok=True)
     test_files = [join(process_path, scene_names[i] + '.ply') for i in test_split]
-    prepare_files(test_files, test_path, crop_size=100)
+    prepare_files(test_files, test_path, split=split, crop_size=250)
+
