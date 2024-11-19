@@ -1,3 +1,7 @@
 [FORINSTANCE]
-RMIT pts 10 shrink 0.9
+CULS pts 50 db_radius 0.15 s 0.9
+TUWIEN pts 50 db_radius 0.05 s 0.5
+NIBIO, SCION pts 50 db_radius 0.05  s 0.9
+RMIT pts 10 db_radius 0.1 s 0.5
+
 

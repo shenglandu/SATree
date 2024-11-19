@@ -25,7 +25,7 @@
 
 int main(int argc, char** argv) {
 
-    std::string config_nm = "/mnt/materials/PROJECT#3_Tree_Segmentation/Code/SASeg/Config/treeml.ini";
+    std::string config_nm = "/mnt/materials/PROJECT#3_Tree_Segmentation/Code/SASeg/Config/forinstance.ini";
 //    std::string scene_file_nm(argv[1]);
 
     // Initialize a tree seg object
