@@ -12,7 +12,7 @@ model:
     sa_layers: 1 
     sa_use_res: False 
     width: 32
-    in_channels: 2
+    in_channels: 1
     expansion: 1
     radius: 0.4
     nsample: 16

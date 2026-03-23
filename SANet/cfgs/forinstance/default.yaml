@@ -18,7 +18,7 @@ dataset:
     voxel_max: null
     presample: False
 
-feature_keys: x,heights
+feature_keys: x #,heights
 num_classes: 3
 batch_size: 32
 val_batch_size: 1
