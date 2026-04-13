@@ -19,7 +19,7 @@ cd to `SATree/SANet/openpoints/dataset/treeml/prepare_treeml_strongstem.py`, spe
         python prepare_treeml_strongstem.py
 
 ### ForInstance
-For ForInstance dataset, the original data can be downloaded from [this](https://zenodo.org/records/8287792) link. Download the whole dataset without changing the folder structure. cd to `SATree/SANet/openpoints/dataset/forinstance/prepare_forinstance.py`, specify the tree path and output ply path in L171 and L175. Then, you can run preprocessing using:
+For ForInstance dataset, the original data can be downloaded from [this](https://zenodo.org/records/8287792) link. Download the dataset without changing its structure. cd to `SATree/SANet/openpoints/dataset/forinstance/prepare_forinstance.py`, specify the tree path and output ply path in L171 and L175. Then, you can run preprocessing using:
 
         python prepare_forinstance.py
 
