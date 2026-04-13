@@ -13,9 +13,23 @@ We adopt [PointMetaBase](https://arxiv.org/abs/2211.14462) as the backbone for p
 ## How to run SATree
 ### Data preprocessing
 
+For TreeML dataset, the original data can be downloaded from [this](https://springernature.figshare.com/collections/TreeML-Data_a_multidisciplinary_and_multilayer_urban_tree_dataset/6788358/1) link. We need three datasets:
+- Dataset_tree
+- Dataset_building_other
+- Dataset_QSM
+cd to `SATree/SANet/openpoints/dataset/treeml/prepare_treeml_strongstem.py`, specify the paths for these three datasets in L274-L276. Besides, you need to specify your own output ply path. Then, you can run preprocessing using
+
+        python prepare_treeml_strongstem.py
+
+
+For ForInstance dataset, the original data can be downloaded from [this](https://zenodo.org/records/8287792) link. Download the whole dataset without changing the folder structure. cd to `SATree/SANet/openpoints/dataset/forinstance/prepare_forinstance.py`, specify the tree path and output ply path in L171 and L175. Then, you can run preprocessing using
+
+        python prepare_forinstance.py
+
+
 ### Training SANet
 
-### Running SASag
+### Running SASeg
 
 ### Evaluation
 
