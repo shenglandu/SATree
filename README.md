@@ -7,7 +7,7 @@ This repo is the implementation for [SATree: Structure-aware tree instance segme
 ## Overview
 We propose SATree, a novel structure-aware approach that directly identifies important tree structures, such as crowns and stems, from point clouds, enabling robust tree instance segmentation against tree overlaps and varying tree sizes. Our method leverages a multi-task learning framework that simultaneously performs (i) semantic segmentation to classify a point as crown, stem, or other; (ii) heatmap prediction to assign a heat value to each point based on 2D Gaussian kernels centered at tree stem locations; (iii) offset prediction to estimate point-wise offset vectors pointing to the instance centroid. Our research outputs are precisely segmented 3D tree instances that support downstream forestry inventory, 3D tree reconstruction, and fine-grained part segmentation of trees. 
 
-## Instructions for data preprocessing
+## Data preprocessing instructions
 ### TreeML
 For TreeML dataset, the original data can be downloaded from [this](https://springernature.figshare.com/collections/TreeML-Data_a_multidisciplinary_and_multilayer_urban_tree_dataset/6788358/1) link. We need three datasets:
 - Dataset_tree
@@ -30,10 +30,10 @@ Note that the following packages are required to successfully run preprocessing 
 - laspy
 
 ## SANet Training procedures
-### Backbone
+### Backbone reference
 We adopt [PointMetaBase](https://arxiv.org/abs/2211.14462) as the backbone for point feature learning. Please refer to their [Pytorch implementation](https://github.com/linhaojia13/PointMetaBase) for installation and setup.
 
-### Training SANet on TreeML
+### Training on TreeML
 cd to `SATree/SANet/cfgs/treeml/default.yaml`, specify the ply path of the previously processed data in the field `data_root`. Then, you can train SANet on TreeML using:
 
         CUDA_VISIBLE_DEVICES=0 bash script/main_segmentation.sh cfgs/treeml/pointmetabase-l.yaml wandb.use_wandb=False
@@ -43,10 +43,10 @@ For testing, you can use:
         CUDA_VISIBLE_DEVICES=0 bash script/main_segmentation.sh cfgs/treeml/pointmetabase-l.yaml wandb.use_wandb=False mode=test --pretrained_path [specify your pretrained weight here. By default, we use the ckpt_latest.pth for testing]
 
 
-### Training SANet on ForInstance
+### Training on ForInstance
 It is performed in a manner analogous to TreeML training.
 
-## Running SASeg
+## SASeg instance segmentation steps
 Coming soon...
 
 ## Evaluation
