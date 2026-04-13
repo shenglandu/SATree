@@ -11,7 +11,13 @@ We propose SATree, a novel structure-aware approach that directly identifies imp
 We adopt [PointMetaBase](https://arxiv.org/abs/2211.14462) as the backbone for point feature learning. Please refer to their [Pytorch implementation](https://github.com/linhaojia13/PointMetaBase) for installation and setup.
 
 ## How to run SATree
-Coming soon...
+### Data preprocessing
+
+### Training SANet
+
+### Running SASag
+
+### Evaluation
 
 ## Citation
 If you use (part of) the code/approach in a scientific work, please cite our paper:
