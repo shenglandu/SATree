@@ -44,12 +44,25 @@ For testing, you can use:
 
 
 ### Training on ForInstance
-It is performed in a manner analogous to TreeML training.
+cd to `SATree/SANet/cfgs/forinstance/default.yaml`, specify the ply path of the previously processed data in the field `data_root`. Then, you can train SANet on TreeML using:
+
+        CUDA_VISIBLE_DEVICES=0 bash script/main_segmentation.sh cfgs/forinstance/pointmetabase-l.yaml wandb.use_wandb=False
+
+For testing, you can use:
+
+        CUDA_VISIBLE_DEVICES=0 bash script/main_segmentation.sh cfgs/forinstance/pointmetabase-l.yaml wandb.use_wandb=False mode=test --pretrained_path [specify your pretrained weight here. By default, we use the ckpt_latest.pth for testing]
 
 ## SASeg instance segmentation steps
-Coming soon...
+### Build
+The implementation of SASeg depends on the packages of [PCL](https://pointclouds.org/), [VTK](https://vtk.org/), and [Boost](https://www.boost.org/). cd to `SATree/SASeg/Code/CMakeLists.txt`. In L27-28, you need to manually set the path to the Boost library. Then, you can build SASeg using compilers such as [CLion](https://www.jetbrains.com/clion/). Building requires CMake`>=3.12` and C++`>=14`.
+
+### Run
+Currently, the instance segmentation is performed on the single-scene level. For segmenting individual trees of a specific scene in the TreeML dataset, cd to `SATree/SASeg/Config/treeml.ini`, specify the path to the network prediction outputs (.ply) of the scene. Then, in `SATree/SASeg/Code/SASeg/main.cpp` L28, specify the path to this `treeml.ini` configuration file. You can run the instance segmentation of the given scene of the TreeML dataset. For the ForInstance dataset, you need to look at `SATree/SASeg/Config/forinstance.ini`.
 
 ## Evaluation
+Coming soon...
+
+## Pretrained weights
 Coming soon...
 
 ## Citation
@@ -63,4 +76,7 @@ If you use (part of) the code/approach in a scientific work, please cite our pap
   doi={10.1016/j.ufug.2026.129414}
 }
 ```
+
+## Acknowledgements
+
 
